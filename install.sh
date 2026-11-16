@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# ducklingOS 1 "Obsidian" - All-in-One Installer
+# ducklingOS 1 "Obsidian" - Standalone Installer
 # ==============================================================================
-# Single-script installer for ducklingOS 1 "Obsidian" built on Arch Linux.
-# Features:
-#   - Omarchy-style TUI powered by Charmbracelet gum
-#   - Desktop Environment: KDE Plasma only (Obsidian Edition)
-#   - Bootloader: Limine only
-#   - Interactive prompts: Hostname, Localization, Users & Extra Users, Storage
-#   - BTRFS (subvolumes) or EXT4
-#   - --dev simulation mode (dry run without touching system/disks)
+# Theme: Omarchy Minimalist Pixel-TUI
+# Colors:
+#   - Background: Dark Violet (#160b24)
+#   - Logo / Brand: Vibrant Yellow (#f5e042)
+#   - Accents: Lilac (#c084fc), Lavender (#a78bfa), Soft Gray (#e2e8f0)
+# Alignment:
+#   - Fully centered both horizontally and vertically across any terminal resolution
+# Desktop: KDE Plasma 6 (Wayland)
+# Bootloader: Limine
+# Mode: Live or --dev simulation
 # ==============================================================================
 
 set -eo pipefail
 
 # ------------------------------------------------------------------------------
-# Default State & Variables
+# System State & Configuration
 # ------------------------------------------------------------------------------
 export DISTRO_NAME="ducklingOS"
 export DISTRO_VERSION="1"
@@ -29,7 +31,7 @@ export PREVIEW_DIR="/tmp/ducklingos-dev-preview"
 # Localization Defaults
 export SYSTEM_KEYMAP="us"
 export SYSTEM_LOCALE="en_US.UTF-8"
-export SYSTEM_TIMEZONE="UTC"
+export SYSTEM_TIMEZONE="Europe/Berlin"
 
 # Network Defaults
 export SYSTEM_HOSTNAME="duckling-obsidian"
@@ -49,43 +51,74 @@ export TARGET_DISK=""
 export TARGET_PARTITION_MODE="auto" # auto or manual
 export TARGET_FILESYSTEM="btrfs"    # btrfs or ext4
 export BTRFS_SUBVOLUMES=1
-export SWAP_TYPE="zram"             # zram, swapfile-4g, swapfile-8g, or none
+export SWAP_TYPE="zram"             # zram, swapfile-4g, swapfile-8g, none
 export SWAP_SIZE="4G"
 export MOUNT_POINT="/mnt"
 
-# Fixed Software Environment
-export SYSTEM_KERNEL="linux-zen"    # linux-zen (default), selectable: linux, linux-zen, linux-lts
-export SYSTEM_PROFILE="kde"         # Fixed to KDE Plasma
-export SYSTEM_BOOTLOADER="limine"   # Fixed to Limine
+# Software & Hardware Defaults
+export SYSTEM_KERNEL="linux-zen"    # linux-zen (default), linux, linux-lts
+export SYSTEM_PROFILE="kde"         # KDE Plasma 6
+export SYSTEM_BOOTLOADER="limine"   # Limine
 export INSTALL_DEV_TOOLS=1
 export INSTALL_BLUETOOTH=1
 
-# Color Palette (Obsidian Theme)
-export COLOR_PRIMARY="135"          # Deep Purple
-export COLOR_SECONDARY="45"         # Cyan
-export COLOR_ACCENT="212"           # Pink Accent
-export COLOR_SUCCESS="42"           # Emerald Green
-export COLOR_WARNING="214"          # Orange
-export COLOR_DANGER="196"           # Crimson Red
-export COLOR_MUTED="242"            # Dark Gray
+# ------------------------------------------------------------------------------
+# Color Palette: Dark Violet & Bright Yellow
+# ------------------------------------------------------------------------------
+export OMARCHY_BG="#160b24"         # Deep Dark Violet Background
+export OMARCHY_YELLOW="#f5e042"     # Vibrant ducklingOS Yellow (Signature)
+export OMARCHY_HEADER="#c084fc"     # Lavender/Lilac Header Text
+export OMARCHY_ITEM="#e2e8f0"       # Light Crisp Menu Item Text
+export OMARCHY_CURSOR="#facc15"     # Yellow Cursor/Selected Accent
+export OMARCHY_MUTED="#7e6c99"      # Dimmed helper / keybinds text
+export OMARCHY_TRACK="#2a1745"      # Dark Violet Track for progress bar
+export OMARCHY_BAR="#f5e042"        # Yellow Filled Progress Block
+export OMARCHY_DANGER="#f87171"     # Soft Red for warnings
+export OMARCHY_WARN="#fbbf24"       # Warm Amber
 
 # ------------------------------------------------------------------------------
-# UI & Helper Functions
+# Dynamic Geometry & Centering Helpers
 # ------------------------------------------------------------------------------
+get_term_size() {
+    TERM_COLS=$(tput cols 2>/dev/null || echo 80)
+    TERM_LINES=$(tput lines 2>/dev/null || echo 24)
+}
+
+# Calculate left padding spaces to center content of a given width
+get_left_pad() {
+    local content_width="${1:-68}"
+    get_term_size
+    local pad_count=$(( (TERM_COLS - content_width) / 2 ))
+    if [ "$pad_count" -lt 0 ]; then pad_count=0; fi
+    printf "%*s" "$pad_count" ""
+}
+
+# Add top padding newlines to center content vertically
+ui_vertical_pad() {
+    local content_height="${1:-16}"
+    get_term_size
+    local pad_lines=$(( (TERM_LINES - content_height) / 2 ))
+    if [ "$pad_lines" -gt 0 ]; then
+        for ((i = 0; i < pad_lines; i++)); do
+            echo ""
+        done
+    fi
+}
+
 check_gum_installed() {
     if ! command -v gum &>/dev/null; then
-        echo -e "\033[1;33m[!] 'gum' (by Charmbracelet) is required for the ducklingOS TUI.\033[0m"
+        echo -e "\033[38;2;245;224;66m[!] 'gum' is required for the ducklingOS installer.\033[0m"
         if [ "$DEV_MODE" -eq 1 ] && [ "$EUID" -ne 0 ]; then
-            echo -e "\033[1;31mPlease install 'gum' using: sudo pacman -S gum\033[0m"
+            echo -e "\033[38;2;248;113;113mPlease install 'gum' using: sudo pacman -S gum\033[0m"
             exit 1
         elif command -v pacman &>/dev/null && [ "$EUID" -eq 0 ]; then
-            echo -e "\033[1;32m[*] Installing 'gum' via pacman...\033[0m"
+            echo -e "\033[38;2;192;132;252m[*] Installing 'gum' via pacman...\033[0m"
             pacman -Sy --noconfirm gum || {
-                echo -e "\033[1;31mFailed to install gum. Aborting.\033[0m"
+                echo -e "\033[38;2;248;113;113mFailed to install gum. Aborting.\033[0m"
                 exit 1
             }
         else
-            echo -e "\033[1;31mError: gum is missing and cannot be installed automatically.\033[0m"
+            echo -e "\033[38;2;248;113;113mError: gum is missing and cannot be installed automatically.\033[0m"
             exit 1
         fi
     fi
@@ -93,123 +126,239 @@ check_gum_installed() {
 
 ui_clear() {
     clear 2>/dev/null || true
+    # Set dark violet background color in supported terminal emulators
+    printf "\033]11;%s\007" "$OMARCHY_BG" 2>/dev/null || true
 }
 
-ui_banner() {
-    local dev_badge=""
-    if [ "$DEV_MODE" -eq 1 ]; then
-        dev_badge=" [DEV / DRY-RUN SIMULATION MODE]"
-    fi
-
+# Center-aligned Yellow Pixel Wordmark Logo
+ui_logo() {
+    get_term_size
     gum style \
-        --foreground "$COLOR_PRIMARY" \
-        --border-foreground "$COLOR_SECONDARY" \
-        --border rounded \
+        --foreground "$OMARCHY_YELLOW" \
+        --bold \
         --align center \
-        --width 72 \
-        --margin "0 1" \
-        --padding "1 2" \
-        "  ██████╗ ██╗   ██╗ ██████╗██╗  ██╗██╗     ██╗███╗   ██╗ ██████╗  ██████╗ ███████╗" \
-        "  ██╔══██╗██║   ██║██╔════╝██║ ██╔╝██║     ██║████╗  ██║██╔════╝ ██╔═══██╗██╔════╝" \
-        "  ██║  ██║██║   ██║██║     █████╔╝ ██║     ██║██╔██╗ ██║██║  ███╗██║   ██║███████╗" \
-        "  ██║  ██║██║   ██║██║     ██╔═██╗ ██║     ██║██║╚██╗██║██║   ██║██║   ██║╚════██║" \
-        "  ██████╔╝╚██████╔╝╚██████╗██║  ██╗███████╗██║██║ ╚████║╚██████╔╝╚██████╔╝███████║" \
-        "  ╚═════╝  ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ ╚══════╝" \
-        "" \
-        "ducklingOS 1 \"Obsidian\" System Installer$dev_badge" \
-        "KDE Plasma Edition • Limine Bootloader • Modern Arch Architecture"
+        --width "$TERM_COLS" \
+        "██████▄  ███  ███  ▄████▄  ███  ███ ███      ████ ███  ███  ▄████▄ " \
+        "███  ███ ███  ███ ███  ███ ███ ▄██▀ ███       ██  ████ ███ ███  ███" \
+        "███  ███ ███  ███ ███      ███████  ███       ██  ████████ ███     " \
+        "███  ███ ███  ███ ███      █████▄   ███       ██  ███ ████ ███ ████" \
+        "███  ███ ███  ███ ███      ███ ▀██▄ ███       ██  ███  ███ ███  ███" \
+        "███  ███ ███  ███ ███  ███ ███  ███ ███  ███  ██  ███  ███ ███  ███" \
+        "██████▀   ▀████▀   ▀████▀  ███  ███ ████████ ████ ███  ███  ▀█████▀"
+    echo ""
 }
 
-ui_dev_warning() {
+ui_dev_badge() {
     if [ "$DEV_MODE" -eq 1 ]; then
+        get_term_size
         gum style \
-            --foreground "$COLOR_WARNING" \
-            --border double \
-            --border-foreground "$COLOR_WARNING" \
-            --padding "0 1" \
-            --margin "1 0" \
-            " ⚡ DEV MODE ACTIVE: NO REAL CHANGES WILL BE MADE TO YOUR STORAGE OR SYSTEM! ⚡ "
+            --foreground "$OMARCHY_WARN" \
+            --align center \
+            --width "$TERM_COLS" \
+            "⚡ DEV / DRY-RUN SIMULATION MODE (NO STORAGE MODIFICATIONS) ⚡"
+        echo ""
     fi
 }
 
-ui_header() {
+ui_screen_header() {
     local title="$1"
-    local desc="$2"
-    echo ""
-    gum style --foreground "$COLOR_SECONDARY" --bold "❯ $title"
-    if [ -n "$desc" ]; then
-        gum style --foreground "$COLOR_MUTED" "  $desc"
+    local est_height="${2:-18}"
+    ui_clear
+    ui_vertical_pad "$est_height"
+    ui_logo
+    ui_dev_badge
+    if [ -n "$title" ]; then
+        get_term_size
+        gum style \
+            --foreground "$OMARCHY_HEADER" \
+            --align center \
+            --width "$TERM_COLS" \
+            "$title"
+        echo ""
     fi
+}
+
+ui_footer_hint() {
+    local hint="${1:-↑/↓ navigate  ·  enter submit}"
+    get_term_size
     echo ""
+    gum style \
+        --foreground "$OMARCHY_TRACK" \
+        --align center \
+        --width "$TERM_COLS" \
+        "................................................................"
+    gum style \
+        --foreground "$OMARCHY_MUTED" \
+        --align center \
+        --width "$TERM_COLS" \
+        "$hint"
 }
 
-ui_step() {
-    local step="$1"
-    local total="$2"
-    local name="$3"
-    gum style --foreground "$COLOR_ACCENT" --bold "[$step/$total] $name"
+# Centered Choose Menu aligned with the left edge of the logo
+ui_choose() {
+    local header="$1"
+    shift
+    local lpad
+    lpad=$(get_left_pad 71)
+
+    gum choose \
+        --header="${lpad}${header}" \
+        --header.foreground="$OMARCHY_HEADER" \
+        --cursor="${lpad}> " \
+        --cursor.foreground="$OMARCHY_CURSOR" \
+        --selected.foreground="$OMARCHY_CURSOR" \
+        --item.foreground="$OMARCHY_ITEM" \
+        --height=11 \
+        "$@"
 }
 
-ui_info() {
-    gum style --foreground "$COLOR_SECONDARY" "  ℹ $1"
-}
-
-ui_success() {
-    gum style --foreground "$COLOR_SUCCESS" --bold "  ✔ $1"
-}
-
-ui_warn() {
-    gum style --foreground "$COLOR_WARNING" --bold "  ⚠ $1"
-}
-
-ui_error() {
-    gum style --foreground "$COLOR_DANGER" --bold "  ✖ $1"
-}
-
+# Centered Input
 ui_input() {
     local prompt="$1"
     local placeholder="$2"
     local default_val="$3"
-    gum input --prompt "$prompt: " --placeholder "$placeholder" --value "$default_val" --width 60
+    local lpad
+    lpad=$(get_left_pad 71)
+
+    gum input \
+        --prompt="${lpad}${prompt} " \
+        --prompt.foreground="$OMARCHY_HEADER" \
+        --placeholder="$placeholder" \
+        --placeholder.foreground="$OMARCHY_MUTED" \
+        --value="$default_val" \
+        --cursor.foreground="$OMARCHY_CURSOR" \
+        --width=70
 }
 
+# Centered Password Input
 ui_password() {
     local prompt="$1"
     local placeholder="$2"
-    gum input --password --prompt "$prompt: " --placeholder "$placeholder" --width 60
+    local lpad
+    lpad=$(get_left_pad 71)
+
+    gum input \
+        --password \
+        --prompt="${lpad}${prompt} " \
+        --prompt.foreground="$OMARCHY_HEADER" \
+        --placeholder="$placeholder" \
+        --placeholder.foreground="$OMARCHY_MUTED" \
+        --cursor.foreground="$OMARCHY_CURSOR" \
+        --width=70
 }
 
-ui_choose() {
-    gum choose "$@"
-}
-
+# Centered Confirm Dialog
 ui_confirm() {
     local prompt="$1"
-    local default_btn="${2:-Yes}"
-    gum confirm "$prompt" --default="$default_btn"
+    local affirmative="${2:-Yes}"
+    local negative="${3:-No}"
+    local lpad
+    lpad=$(get_left_pad 71)
+
+    gum confirm \
+        --prompt.foreground="$OMARCHY_HEADER" \
+        --selected.background="$OMARCHY_YELLOW" \
+        --selected.foreground="#160b24" \
+        --unselected.background="$OMARCHY_TRACK" \
+        --unselected.foreground="$OMARCHY_ITEM" \
+        --affirmative="$affirmative" \
+        --negative="$negative" \
+        "${lpad}${prompt}"
+}
+
+ui_info() {
+    local lpad
+    lpad=$(get_left_pad 71)
+    gum style --foreground "$OMARCHY_HEADER" "${lpad}ℹ $1"
+}
+
+ui_success() {
+    local lpad
+    lpad=$(get_left_pad 71)
+    gum style --foreground "$OMARCHY_YELLOW" --bold "${lpad}✔ $1"
+}
+
+ui_warn() {
+    local lpad
+    lpad=$(get_left_pad 71)
+    gum style --foreground "$OMARCHY_WARN" --bold "${lpad}⚠ $1"
+}
+
+ui_error() {
+    local lpad
+    lpad=$(get_left_pad 71)
+    gum style --foreground "$OMARCHY_DANGER" --bold "${lpad}✖ $1"
+}
+
+# Centered Progress Bar (Omarchy Style in Dark Violet & Yellow)
+ui_progress_bar() {
+    local current="$1"
+    local total="$2"
+    local status_text="$3"
+    local tip_text="${4:-Tip: Super + K shows all the key bindings}"
+
+    local width=42
+    local percent=$(( current * 100 / total ))
+    local filled=$(( width * current / total ))
+    local empty=$(( width - filled ))
+
+    get_term_size
+    ui_clear
+    ui_vertical_pad 15
+    ui_logo
+    ui_dev_badge
+
+    # Status line centered
+    gum style \
+        --foreground "$OMARCHY_HEADER" \
+        --align center \
+        --width "$TERM_COLS" \
+        "$status_text"
+    echo ""
+
+    # Progress track & block centered
+    local filled_spaces="" empty_str=""
+    if [ "$filled" -gt 0 ]; then
+        printf -v filled_spaces "%*s" "$filled" ""
+    fi
+    local filled_str="${filled_spaces// /█}"
+    if [ "$empty" -gt 0 ]; then
+        printf -v empty_str "%*s" "$empty" ""
+    fi
+
+    local bar_lpad
+    bar_lpad=$(get_left_pad "$width")
+    echo -e "${bar_lpad}\033[48;2;42;23;69m\033[38;2;245;224;66m${filled_str}${empty_str}\033[0m"
+    echo ""
+
+    # Shortcut Tip centered
+    gum style \
+        --foreground "$OMARCHY_YELLOW" \
+        --align center \
+        --width "$TERM_COLS" \
+        "$tip_text"
+    echo ""
 }
 
 ui_cmd() {
     local cmd_desc="$1"
     shift
     local cmd=("$@")
+    local lpad
+    lpad=$(get_left_pad 64)
 
     if [ "$DEV_MODE" -eq 1 ]; then
-        gum style \
-            --foreground "$COLOR_WARNING" \
-            --border rounded \
-            --border-foreground "$COLOR_MUTED" \
-            --padding "0 1" \
-            " [SIMULATED ACTION] $cmd_desc" \
-            " Command: ${cmd[*]}"
+        echo -e "${lpad}\033[38;2;192;132;252m❯ [SIMULATION]\033[0m \033[38;2;226;232;240m$cmd_desc\033[0m"
+        echo -e "${lpad}  \033[38;2;126;108;153m${cmd[*]}\033[0m"
         mkdir -p "$PREVIEW_DIR"
+        sleep 0.15 2>/dev/null || true
         return 0
     else
-        echo -e "\033[0;36m[EXEC]\033[0m $cmd_desc"
+        echo -e "${lpad}\033[38;2;245;224;66m❯\033[0m \033[38;2;226;232;240m$cmd_desc\033[0m"
         "${cmd[@]}"
         local status=$?
         if [ $status -ne 0 ]; then
-            ui_error "Command failed with exit code $status: ${cmd[*]}"
+            ui_error "Failed with exit code $status: ${cmd[*]}"
             return $status
         fi
         return 0
@@ -217,48 +366,45 @@ ui_cmd() {
 }
 
 # ------------------------------------------------------------------------------
-# Step 1: Welcome & Pre-Flight Diagnostics
+# Step 1: Welcome Screen
 # ------------------------------------------------------------------------------
 step_welcome() {
-    ui_clear
-    ui_banner
-    ui_dev_warning
-
-    ui_header "Welcome to ducklingOS 1 \"Obsidian\"" \
-              "Featuring KDE Plasma desktop and the next-generation Limine bootloader."
-
-    echo ""
-    gum style --bold --foreground "$COLOR_SECONDARY" "System Diagnostics:"
+    ui_screen_header "System Diagnostics" 20
 
     if [ -d "/sys/firmware/efi/efivars" ]; then
         ui_success "Boot Mode: UEFI (Optimal for Limine)"
     else
-        ui_warn "Boot Mode: BIOS / MBR (Limine supports BIOS, but UEFI is recommended)"
+        ui_warn "Boot Mode: BIOS / Legacy CSM"
     fi
 
     local total_ram
     total_ram=$(free -h 2>/dev/null | awk '/^Mem:/ {print $2}')
     if [ -n "$total_ram" ]; then
-        ui_info "Total Memory: $total_ram"
+        ui_info "Memory: $total_ram detected"
     fi
 
     if ping -c 1 -W 2 archlinux.org &>/dev/null; then
-        ui_success "Network: Connected to Internet"
+        ui_success "Network: Active internet connection verified"
     else
         if [ "$DEV_MODE" -eq 1 ]; then
-            ui_warn "Network: No active connection detected (Simulating in Dev Mode)"
+            ui_warn "Network: Offline (Simulating in Dev Mode)"
         else
-            ui_warn "Network: No active internet connection. Connect via 'iwctl' or Ethernet."
+            ui_warn "Network: No active internet connection found."
         fi
     fi
 
-    echo ""
+    ui_info "Desktop Environment: KDE Plasma 6"
+    ui_info "Bootloader: Limine"
+
+    ui_footer_hint "enter continue  ·  ctrl+c exit"
+
     if [ "$TEST_PRESET" -eq 1 ]; then
-        ui_info "Auto-test preset enabled: Continuing automatically."
+        ui_info "Preset enabled: Proceeding automatically."
         return 0
     fi
 
-    if ! ui_confirm "Ready to configure your ducklingOS 1 installation?"; then
+    echo ""
+    if ! ui_confirm "Ready to configure ducklingOS 1 \"Obsidian\"?"; then
         ui_warn "Installation cancelled by user."
         exit 0
     fi
@@ -268,30 +414,25 @@ step_welcome() {
 # Step 2: Localization
 # ------------------------------------------------------------------------------
 step_localization() {
-    ui_clear
-    ui_banner
-    ui_dev_warning
-    ui_step 2 7 "Localization & Regional Settings"
-
-    ui_header "Keyboard Layout" "Select your physical keyboard layout"
+    ui_screen_header "Regional & Localization Setup" 18
 
     if [ "$TEST_PRESET" -eq 1 ]; then
         SYSTEM_KEYMAP="us"
         SYSTEM_LOCALE="en_US.UTF-8"
-        SYSTEM_TIMEZONE="UTC"
-        ui_info "Preset selected: Keymap=$SYSTEM_KEYMAP, Locale=$SYSTEM_LOCALE, Timezone=$SYSTEM_TIMEZONE"
+        SYSTEM_TIMEZONE="Europe/Berlin"
         return 0
     fi
 
     local keymap_choice
-    keymap_choice=$(ui_choose "us (US English)" \
-                              "de-latin1 (German QWERTZ)" \
-                              "uk (UK English)" \
-                              "fr (French AZERTY)" \
-                              "es (Spanish)" \
-                              "it (Italian)" \
-                              "ch (Swiss German/French)" \
-                              "Custom keyboard layout...")
+    keymap_choice=$(ui_choose "Keyboard Layout" \
+        "us (US English)" \
+        "de-latin1 (German QWERTZ)" \
+        "uk (UK English)" \
+        "fr (French AZERTY)" \
+        "es (Spanish)" \
+        "it (Italian)" \
+        "ch (Swiss German/French)" \
+        "Custom layout...")
 
     case "$keymap_choice" in
         "de-latin1"*) SYSTEM_KEYMAP="de-latin1" ;;
@@ -302,7 +443,7 @@ step_localization() {
         "it"*)        SYSTEM_KEYMAP="it" ;;
         "ch"*)        SYSTEM_KEYMAP="sg-latin1" ;;
         "Custom"*)
-            SYSTEM_KEYMAP=$(ui_input "Enter console keymap name" "e.g. us, de-latin1" "us")
+            SYSTEM_KEYMAP=$(ui_input "Console keymap:" "us, de-latin1" "us")
             ;;
         *) SYSTEM_KEYMAP="us" ;;
     esac
@@ -310,16 +451,15 @@ step_localization() {
     if [ "$DEV_MODE" -eq 0 ] && command -v loadkeys &>/dev/null; then
         loadkeys "$SYSTEM_KEYMAP" &>/dev/null || true
     fi
-    ui_success "Console keymap set to: $SYSTEM_KEYMAP"
 
-    ui_header "System Locale" "Select the default language and regional formatting"
     local locale_choice
-    locale_choice=$(ui_choose "en_US.UTF-8 (English - United States)" \
-                              "de_DE.UTF-8 (German - Germany)" \
-                              "en_GB.UTF-8 (English - Great Britain)" \
-                              "fr_FR.UTF-8 (French - France)" \
-                              "es_ES.UTF-8 (Spanish - Spain)" \
-                              "Custom locale...")
+    locale_choice=$(ui_choose "System Locale" \
+        "en_US.UTF-8 (English - United States)" \
+        "de_DE.UTF-8 (German - Germany)" \
+        "en_GB.UTF-8 (English - Great Britain)" \
+        "fr_FR.UTF-8 (French - France)" \
+        "es_ES.UTF-8 (Spanish - Spain)" \
+        "Custom locale...")
 
     case "$locale_choice" in
         "de_DE"*) SYSTEM_LOCALE="de_DE.UTF-8" ;;
@@ -328,74 +468,65 @@ step_localization() {
         "fr_FR"*) SYSTEM_LOCALE="fr_FR.UTF-8" ;;
         "es_ES"*) SYSTEM_LOCALE="es_ES.UTF-8" ;;
         "Custom"*)
-            SYSTEM_LOCALE=$(ui_input "Enter locale string" "e.g. en_US.UTF-8" "en_US.UTF-8")
+            SYSTEM_LOCALE=$(ui_input "Locale string:" "en_US.UTF-8" "en_US.UTF-8")
             ;;
         *) SYSTEM_LOCALE="en_US.UTF-8" ;;
     esac
-    ui_success "System locale selected: $SYSTEM_LOCALE"
 
-    ui_header "Timezone" "Select system timezone"
     local tz_choice
-    tz_choice=$(ui_choose "Europe/Berlin" \
-                          "UTC" \
-                          "Europe/London" \
-                          "Europe/Paris" \
-                          "Europe/Vienna" \
-                          "Europe/Zurich" \
-                          "America/New_York" \
-                          "America/Chicago" \
-                          "America/Los_Angeles" \
-                          "Asia/Tokyo" \
-                          "Custom Timezone...")
+    tz_choice=$(ui_choose "Timezone" \
+        "Europe/Berlin" \
+        "UTC" \
+        "Europe/London" \
+        "Europe/Paris" \
+        "Europe/Vienna" \
+        "Europe/Zurich" \
+        "America/New_York" \
+        "America/Chicago" \
+        "America/Los_Angeles" \
+        "Asia/Tokyo" \
+        "Custom Timezone...")
 
     case "$tz_choice" in
         "Custom"*)
-            SYSTEM_TIMEZONE=$(ui_input "Enter timezone (Region/City)" "e.g. Europe/Berlin" "UTC")
+            SYSTEM_TIMEZONE=$(ui_input "Timezone:" "Region/City" "UTC")
             ;;
         *)
             SYSTEM_TIMEZONE="$tz_choice"
             ;;
     esac
-    ui_success "System timezone set to: $SYSTEM_TIMEZONE"
+
+    ui_footer_hint
 }
 
 # ------------------------------------------------------------------------------
 # Step 3: Network & Hostname
 # ------------------------------------------------------------------------------
 step_network() {
-    ui_clear
-    ui_banner
-    ui_dev_warning
-    ui_step 3 7 "Network & Hostname"
-
-    ui_header "System Hostname" "Assign an identifying name for your ducklingOS machine on the network"
+    ui_screen_header "Network & Hostname Configuration" 16
 
     if [ "$TEST_PRESET" -eq 1 ]; then
         SYSTEM_HOSTNAME="duckling-obsidian"
-        ui_info "Preset selected: Hostname=$SYSTEM_HOSTNAME"
         return 0
     fi
 
     while true; do
-        SYSTEM_HOSTNAME=$(ui_input "Enter Hostname" "e.g. duckling-pc, obsidian-box" "$SYSTEM_HOSTNAME")
+        SYSTEM_HOSTNAME=$(ui_input "Hostname:" "e.g. duckling-pc, obsidian-box" "$SYSTEM_HOSTNAME")
         if [[ "$SYSTEM_HOSTNAME" =~ ^[a-zA-Z0-9][-a-zA-Z0-9]*[a-zA-Z0-9]$ ]] || [[ "$SYSTEM_HOSTNAME" =~ ^[a-zA-Z0-9]$ ]]; then
             break
         else
-            ui_error "Invalid hostname. Must contain only letters, numbers, and hyphens."
+            ui_error "Invalid hostname. Letters, digits, and hyphens only."
         fi
     done
 
-    ui_success "Hostname configured as: $SYSTEM_HOSTNAME"
+    ui_footer_hint
 }
 
 # ------------------------------------------------------------------------------
 # Step 4: User Accounts & Extra Users
 # ------------------------------------------------------------------------------
 step_users() {
-    ui_clear
-    ui_banner
-    ui_dev_warning
-    ui_step 4 7 "User Accounts & Security"
+    ui_screen_header "User Accounts & Security" 18
 
     if [ "$TEST_PRESET" -eq 1 ]; then
         USER_NAME="duckling"
@@ -404,15 +535,11 @@ step_users() {
         ROOT_PASSWORD="devpassword123"
         ROOT_PASSWORD_SAME_AS_USER=1
         EXTRA_USERS=("guest:Guest User:no:guest123")
-        ui_info "Preset configured: Primary user '$USER_NAME', Extra user 'guest'"
         return 0
     fi
 
-    # Primary user account
-    ui_header "Primary User Account" "Set up your main user account (granted sudo rights)"
-
     while true; do
-        USER_NAME=$(ui_input "Username" "e.g. eymen, obsidian, duckling" "")
+        USER_NAME=$(ui_input "Primary Username:" "e.g. eymen, obsidian, duckling" "")
         if [[ "$USER_NAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
             if [ "$USER_NAME" = "root" ]; then
                 ui_error "Primary user cannot be 'root'."
@@ -420,23 +547,22 @@ step_users() {
                 break
             fi
         else
-            ui_error "Invalid username. Must be lowercase alphanumeric."
+            ui_error "Invalid username. Lowercase alphanumeric only."
         fi
     done
 
-    USER_REALNAME=$(ui_input "Full Name / Display Name" "e.g. Obsidian Operator" "$USER_NAME")
+    USER_REALNAME=$(ui_input "Full Name / Display Name:" "e.g. Eymen, Obsidian Operator" "$USER_NAME")
 
-    # Primary user password
     while true; do
         echo ""
-        USER_PASSWORD=$(ui_password "Password for '$USER_NAME'" "Enter a strong password")
+        USER_PASSWORD=$(ui_password "Password for '$USER_NAME':" "Enter strong password")
         if [ -z "$USER_PASSWORD" ]; then
             ui_error "Password cannot be empty."
             continue
         fi
 
         local pass_confirm
-        pass_confirm=$(ui_password "Confirm Password" "Re-type password")
+        pass_confirm=$(ui_password "Confirm Password:" "Re-type password")
 
         if [ "$USER_PASSWORD" = "$pass_confirm" ]; then
             ui_success "Password confirmed for '$USER_NAME'."
@@ -446,39 +572,34 @@ step_users() {
         fi
     done
 
-    # Root security
-    ui_header "Root Security" "Superuser (root) account password configuration"
-    if ui_confirm "Use the same password for 'root' (Superuser)?" "Yes"; then
+    echo ""
+    if ui_confirm "Use the same password for 'root' (Superuser)?"; then
         ROOT_PASSWORD_SAME_AS_USER=1
         ROOT_PASSWORD="$USER_PASSWORD"
-        ui_success "Root will share password with '$USER_NAME'."
+        ui_success "Root will share the password with '$USER_NAME'."
     else
         ROOT_PASSWORD_SAME_AS_USER=0
         while true; do
-            ROOT_PASSWORD=$(ui_password "Root Password" "Enter separate root password")
+            ROOT_PASSWORD=$(ui_password "Root Password:" "Enter root password")
             if [ -z "$ROOT_PASSWORD" ]; then
                 ui_error "Root password cannot be empty."
                 continue
             fi
-
             local root_confirm
-            root_confirm=$(ui_password "Confirm Root Password" "Re-type root password")
-
+            root_confirm=$(ui_password "Confirm Root Password:" "Re-type root password")
             if [ "$ROOT_PASSWORD" = "$root_confirm" ]; then
-                ui_success "Root password set successfully."
+                ui_success "Root password verified."
                 break
             else
-                ui_error "Passwords do not match. Please try again."
+                ui_error "Passwords do not match."
             fi
         done
     fi
 
-    # Extra users loop
-    ui_header "Additional Users" "Optionally configure extra local user accounts"
     EXTRA_USERS=()
-
+    echo ""
     while true; do
-        if ! ui_confirm "Would you like to add an extra user?" "No"; then
+        if ! ui_confirm "Would you like to add an extra user?" "Yes" "No"; then
             break
         fi
 
@@ -488,7 +609,7 @@ step_users() {
         local ex_sudo="no"
 
         while true; do
-            ex_user=$(ui_input "Extra Username" "e.g. guest, work" "")
+            ex_user=$(ui_input "Extra Username:" "e.g. guest, work" "")
             if [[ "$ex_user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
                 if [ "$ex_user" = "$USER_NAME" ] || [ "$ex_user" = "root" ]; then
                     ui_error "Username '$ex_user' already exists or is reserved."
@@ -496,47 +617,42 @@ step_users() {
                     break
                 fi
             else
-                ui_error "Invalid username. Must be lowercase alphanumeric."
+                ui_error "Invalid username. Lowercase alphanumeric only."
             fi
         done
 
-        ex_fullname=$(ui_input "Full Name" "Display Name for $ex_user" "$ex_user")
+        ex_fullname=$(ui_input "Display Name:" "Full Name for $ex_user" "$ex_user")
 
         while true; do
-            ex_pass=$(ui_password "Password for '$ex_user'" "Enter password")
+            ex_pass=$(ui_password "Password for '$ex_user':" "Enter password")
             local ex_confirm
-            ex_confirm=$(ui_password "Confirm Password" "Re-type password")
+            ex_confirm=$(ui_password "Confirm Password:" "Re-type password")
             if [ "$ex_pass" = "$ex_confirm" ] && [ -n "$ex_pass" ]; then
                 break
             else
-                ui_error "Passwords do not match or empty."
+                ui_error "Passwords do not match."
             fi
         done
 
-        if ui_confirm "Grant administrator (sudo) privileges to '$ex_user'?" "No"; then
+        if ui_confirm "Grant administrator (sudo) privileges to '$ex_user'?" "Yes" "No"; then
             ex_sudo="yes"
         else
             ex_sudo="no"
         fi
 
         EXTRA_USERS+=("${ex_user}:${ex_fullname}:${ex_sudo}:${ex_pass}")
-        ui_success "Added extra user: $ex_user (Full name: $ex_fullname, Sudo: $ex_sudo)"
+        ui_success "Added extra user: $ex_user (sudo: $ex_sudo)"
+        echo ""
     done
 
-    local count=${#EXTRA_USERS[@]}
-    ui_info "Total extra users configured: $count"
+    ui_footer_hint
 }
 
 # ------------------------------------------------------------------------------
 # Step 5: Storage & Target Installation
 # ------------------------------------------------------------------------------
 step_storage() {
-    ui_clear
-    ui_banner
-    ui_dev_warning
-    ui_step 5 7 "Target Installation & Storage"
-
-    ui_header "Target Disk Selection" "Select where ducklingOS 1 \"Obsidian\" will be installed"
+    ui_screen_header "Target Installation Storage" 18
 
     local disk_list=()
     local disk_map=()
@@ -567,19 +683,16 @@ step_storage() {
         TARGET_PARTITION_MODE="auto"
         TARGET_FILESYSTEM="btrfs"
         SWAP_TYPE="zram"
-        ui_info "Preset storage: Target Disk=$TARGET_DISK, FS=btrfs, Swap=zram"
         return 0
     fi
 
-    echo ""
-    gum style --foreground "$COLOR_MUTED" "Available storage devices:"
     local selected_entry
-    selected_entry=$(ui_choose "${disk_list[@]}" "Manual Target (Use already mounted /mnt)")
+    selected_entry=$(ui_choose "Target Disk" "${disk_list[@]}" "Manual Target (Use already mounted /mnt)")
 
     if [[ "$selected_entry" == *"Manual Target"* ]]; then
         TARGET_PARTITION_MODE="manual"
         TARGET_DISK="manual"
-        ui_info "Selected manual mount mode. Installer will install directly onto $MOUNT_POINT."
+        ui_info "Using pre-mounted filesystem at $MOUNT_POINT."
     else
         TARGET_PARTITION_MODE="auto"
         for i in "${!disk_list[@]}"; do
@@ -592,27 +705,25 @@ step_storage() {
     fi
 
     if [ "$TARGET_PARTITION_MODE" = "auto" ]; then
-        ui_header "Filesystem Architecture" "Select your preferred root filesystem"
         local fs_choice
-        fs_choice=$(ui_choose "btrfs (Recommended - Snapshots, Subvolumes, Compression)" \
-                              "ext4 (Classic, Simple, Standard Linux Filesystem)")
+        fs_choice=$(ui_choose "Filesystem" \
+            "btrfs (Recommended - Subvolumes, Snapshots, zstd compression)" \
+            "ext4 (Standard Classic Linux Filesystem)")
 
         if [[ "$fs_choice" == *"btrfs"* ]]; then
             TARGET_FILESYSTEM="btrfs"
             BTRFS_SUBVOLUMES=1
-            ui_success "Filesystem: BTRFS with subvolumes (@, @home, @snapshots, @var_log)"
         else
             TARGET_FILESYSTEM="ext4"
             BTRFS_SUBVOLUMES=0
-            ui_success "Filesystem: EXT4"
         fi
 
-        ui_header "Swap Configuration" "Select memory swapping strategy"
         local swap_choice
-        swap_choice=$(ui_choose "zram (Recommended: compressed RAM, prolongs SSD lifespan)" \
-                                "swapfile-4g (4 GB dedicated swap file)" \
-                                "swapfile-8g (8 GB dedicated swap file)" \
-                                "none (No swap)")
+        swap_choice=$(ui_choose "Swap Configuration" \
+            "zram (Recommended: compressed RAM, prolongs SSD life)" \
+            "swapfile-4g (4 GB dedicated swap file)" \
+            "swapfile-8g (8 GB dedicated swap file)" \
+            "none (No swap)")
 
         case "$swap_choice" in
             "zram"*)        SWAP_TYPE="zram" ;;
@@ -620,32 +731,29 @@ step_storage() {
             "swapfile-8g"*) SWAP_TYPE="swapfile"; SWAP_SIZE="8G" ;;
             "none"*)        SWAP_TYPE="none" ;;
         esac
-        ui_success "Swap strategy: $SWAP_TYPE"
     fi
+
+    ui_footer_hint
 }
 
 # ------------------------------------------------------------------------------
-# Step 6: Software, Kernel & KDE Plasma
+# Step 6: Software, Kernel & KDE Setup
 # ------------------------------------------------------------------------------
 step_software() {
-    ui_clear
-    ui_banner
-    ui_dev_warning
-    ui_step 6 7 "Software Packages & Kernel"
+    ui_screen_header "Software Environment" 18
 
     if [ "$TEST_PRESET" -eq 1 ]; then
         SYSTEM_KERNEL="linux-zen"
         INSTALL_DEV_TOOLS=1
         INSTALL_BLUETOOTH=1
-        ui_info "Preset software: Kernel=$SYSTEM_KERNEL, Desktop=KDE Plasma, Bootloader=Limine"
         return 0
     fi
 
-    ui_header "Linux Kernel" "Select the kernel package for ducklingOS"
     local kernel_choice
-    kernel_choice=$(ui_choose "linux-zen (Recommended - Low Latency & Desktop Optimized)" \
-                              "linux (Standard Upstream Linux Kernel)" \
-                              "linux-lts (Long Term Support - Maximum Stability)")
+    kernel_choice=$(ui_choose "Linux Kernel" \
+        "linux-zen (Recommended - Low Latency & Desktop Optimized)" \
+        "linux (Standard Upstream Linux Kernel)" \
+        "linux-lts (Long Term Support - Maximum Stability)")
 
     case "$kernel_choice" in
         "linux-zen"*) SYSTEM_KERNEL="linux-zen" ;;
@@ -653,36 +761,32 @@ step_software() {
         "linux-lts"*) SYSTEM_KERNEL="linux-lts" ;;
         *)            SYSTEM_KERNEL="linux-zen" ;;
     esac
-    ui_success "Selected Kernel: $SYSTEM_KERNEL"
 
-    ui_header "Desktop Environment & Bootloader" "Pre-configured for ducklingOS 1 Obsidian"
-    ui_info "Desktop Environment: KDE Plasma 6 (Obsidian Theme & Wayland Session)"
-    ui_info "Bootloader: Limine (Modern, ultra-fast, multi-protocol bootloader)"
+    echo ""
+    ui_info "Desktop Environment: KDE Plasma 6 (Wayland Session)"
+    ui_info "Bootloader: Limine Bootloader"
+    echo ""
 
-    ui_header "Optional Software Components" "Select additional stacks"
-    if ui_confirm "Install Developer Toolkit (Neovim, Zsh, Starship, Git, Tmux, Base-Devel)?" "Yes"; then
+    if ui_confirm "Install Developer Toolkit (Neovim, Zsh, Starship, Git, Tmux, Base-Devel)?"; then
         INSTALL_DEV_TOOLS=1
     else
         INSTALL_DEV_TOOLS=0
     fi
 
-    if ui_confirm "Enable Bluetooth Stack (bluez, bluedevil)?" "Yes"; then
+    if ui_confirm "Enable Bluetooth Stack (bluez, bluedevil)?"; then
         INSTALL_BLUETOOTH=1
     else
         INSTALL_BLUETOOTH=0
     fi
+
+    ui_footer_hint
 }
 
 # ------------------------------------------------------------------------------
-# Step 7: Review & Final Confirmation
+# Step 7: Review & Confirmation
 # ------------------------------------------------------------------------------
 step_review() {
-    ui_clear
-    ui_banner
-    ui_dev_warning
-    ui_step 7 7 "Review & Confirmation"
-
-    ui_header "Installation Summary" "Please review your configuration before installation begins"
+    ui_screen_header "Installation Review" 20
 
     local extra_user_summary="None"
     if [ ${#EXTRA_USERS[@]} -gt 0 ]; then
@@ -696,54 +800,51 @@ step_review() {
         extra_user_summary=$(IFS=', '; echo "${names[*]}")
     fi
 
-    local dev_status="LIVE EXECUTION (Real disk modifications)"
+    local mode_label="LIVE (Changes will be written to disk)"
     if [ "$DEV_MODE" -eq 1 ]; then
-        dev_status="⚡ SIMULATION / DRY-RUN (No disk changes) ⚡"
+        mode_label="⚡ DEV SIMULATION (Dry-run mode) ⚡"
     fi
 
+    local lpad
+    lpad=$(get_left_pad 60)
+
     gum style \
-        --border rounded \
-        --border-foreground "$COLOR_PRIMARY" \
-        --padding "1 2" \
-        --width 72 \
-        -- \
-        "Distribution:   ${DISTRO_FULL_NAME}" \
-        "Install Mode:   ${dev_status}" \
-        "──────────────────────────────────────────────────────────────────" \
-        "Hostname:       ${SYSTEM_HOSTNAME}" \
-        "Locale:         ${SYSTEM_LOCALE}" \
-        "Keymap:         ${SYSTEM_KEYMAP}" \
-        "Timezone:       ${SYSTEM_TIMEZONE}" \
-        "──────────────────────────────────────────────────────────────────" \
-        "Primary User:   ${USER_NAME} (${USER_REALNAME}) [sudo: YES]" \
-        "Root Password:  $([ "$ROOT_PASSWORD_SAME_AS_USER" -eq 1 ] && echo "Same as primary user" || echo "Dedicated root password")" \
-        "Extra Users:    ${extra_user_summary}" \
-        "──────────────────────────────────────────────────────────────────" \
-        "Target Disk:    ${TARGET_DISK} (${TARGET_PARTITION_MODE})" \
-        "Filesystem:     ${TARGET_FILESYSTEM^^}" \
-        "Swap Strategy:  ${SWAP_TYPE}" \
-        "──────────────────────────────────────────────────────────────────" \
-        "Kernel:         ${SYSTEM_KERNEL}" \
-        "Desktop:        KDE Plasma (Wayland)" \
-        "Bootloader:     Limine" \
-        "Developer Tools: $([ "$INSTALL_DEV_TOOLS" -eq 1 ] && echo "Yes" || echo "No")" \
-        "Bluetooth:      $([ "$INSTALL_BLUETOOTH" -eq 1 ] && echo "Yes" || echo "No")"
+        --foreground "$OMARCHY_ITEM" \
+        "${lpad}Distribution:   ${DISTRO_FULL_NAME}" \
+        "${lpad}Install Mode:   ${mode_label}" \
+        "${lpad}Hostname:       ${SYSTEM_HOSTNAME}" \
+        "${lpad}Locale:         ${SYSTEM_LOCALE}" \
+        "${lpad}Keymap:         ${SYSTEM_KEYMAP}" \
+        "${lpad}Timezone:       ${SYSTEM_TIMEZONE}" \
+        "${lpad}Primary User:   ${USER_NAME} (${USER_REALNAME}) [sudo: YES]" \
+        "${lpad}Extra Users:    ${extra_user_summary}" \
+        "${lpad}Target Disk:    ${TARGET_DISK} (${TARGET_PARTITION_MODE})" \
+        "${lpad}Filesystem:     ${TARGET_FILESYSTEM^^}" \
+        "${lpad}Swap Strategy:  ${SWAP_TYPE}" \
+        "${lpad}Kernel:         ${SYSTEM_KERNEL}" \
+        "${lpad}Desktop:        KDE Plasma 6 (Wayland)" \
+        "${lpad}Bootloader:     Limine" \
+        "${lpad}Developer Tools:$([ "$INSTALL_DEV_TOOLS" -eq 1 ] && echo " Yes" || echo " No")" \
+        "${lpad}Bluetooth:      $([ "$INSTALL_BLUETOOTH" -eq 1 ] && echo " Yes" || echo " No")"
 
     echo ""
+    ui_footer_hint "enter confirm  ·  ctrl+c abort"
+
     if [ "$TEST_PRESET" -eq 1 ]; then
-        ui_info "Preset auto-confirmation accepted."
+        ui_info "Preset confirmed automatically."
         return 0
     fi
 
     if [ "$DEV_MODE" -eq 1 ]; then
-        if ! ui_confirm "Proceed with the test / dry-run simulation?" "Yes"; then
-            ui_warn "Dry run aborted by user."
+        if ! ui_confirm "Proceed with the test / dry-run simulation?"; then
+            ui_warn "Dry run cancelled."
             exit 0
         fi
     else
-        gum style --foreground "$COLOR_DANGER" --bold \
-            "⚠ WARNING: ALL EXISTING DATA ON ${TARGET_DISK} WILL BE COMPLETELY DESTROYED!"
-        if ! ui_confirm "Are you ABSOLUTELY sure you want to write changes to disk and install?" "No"; then
+        get_term_size
+        gum style --foreground "$OMARCHY_DANGER" --bold --align center --width "$TERM_COLS" \
+            "⚠ WARNING: ALL DATA ON ${TARGET_DISK} WILL BE PERMANENTLY ERASED!"
+        if ! ui_confirm "Are you ABSOLUTELY sure you want to format and install?" "Yes, format disk" "No, abort"; then
             ui_warn "Installation cancelled. No changes were made."
             exit 0
         fi
@@ -751,15 +852,9 @@ step_review() {
 }
 
 # ------------------------------------------------------------------------------
-# Step 8: Installation Engine (Partitioning, Pacstrap, KDE, Limine)
+# Step 8: Installation Engine (Omarchy Progress Bar View)
 # ------------------------------------------------------------------------------
 step_install() {
-    ui_clear
-    ui_banner
-    ui_dev_warning
-
-    ui_header "Installation in Progress" "ducklingOS 1 \"Obsidian\" (KDE Plasma & Limine) is building"
-
     local efi_part=""
     local root_part=""
 
@@ -773,15 +868,13 @@ step_install() {
         fi
     fi
 
-    # 1. Storage Partitioning & Formatting
-    echo ""
-    ui_step 1 6 "Partitioning & Formatting Storage"
-
+    # Phase 1: Partitioning & Formatting
+    ui_progress_bar 1 6 "Partitioning & Formatting Storage..." "Tip: Super + K shows all the key bindings"
     if [ "$TARGET_PARTITION_MODE" = "auto" ]; then
-        ui_cmd "Wiping existing partition signatures on $TARGET_DISK" \
+        ui_cmd "Wiping existing partition table on $TARGET_DISK" \
             wipefs -af "$TARGET_DISK"
 
-        ui_cmd "Creating GPT partition table on $TARGET_DISK" \
+        ui_cmd "Creating GPT partition label on $TARGET_DISK" \
             parted -s "$TARGET_DISK" mklabel gpt
 
         ui_cmd "Creating EFI System Partition (1024 MiB)" \
@@ -800,19 +893,19 @@ step_install() {
             ui_cmd "Formatting Root Partition as Btrfs ($root_part)" \
                 mkfs.btrfs -f -L "ducklingOS" "$root_part"
 
-            ui_cmd "Mounting root partition temporarily to create Btrfs subvolumes" \
+            ui_cmd "Mounting root to construct subvolumes" \
                 mount "$root_part" "$MOUNT_POINT"
 
-            ui_cmd "Creating subvolume @" \
+            ui_cmd "Creating Btrfs subvolume @" \
                 btrfs subvolume create "${MOUNT_POINT}/@"
 
-            ui_cmd "Creating subvolume @home" \
+            ui_cmd "Creating Btrfs subvolume @home" \
                 btrfs subvolume create "${MOUNT_POINT}/@home"
 
-            ui_cmd "Creating subvolume @snapshots" \
+            ui_cmd "Creating Btrfs subvolume @snapshots" \
                 btrfs subvolume create "${MOUNT_POINT}/@snapshots"
 
-            ui_cmd "Creating subvolume @var_log" \
+            ui_cmd "Creating Btrfs subvolume @var_log" \
                 btrfs subvolume create "${MOUNT_POINT}/@var_log"
 
             ui_cmd "Unmounting temporary root" \
@@ -821,7 +914,7 @@ step_install() {
             ui_cmd "Mounting subvolume @ to $MOUNT_POINT" \
                 mount -o noatime,compress=zstd:1,subvol=@ "$root_part" "$MOUNT_POINT"
 
-            ui_cmd "Creating mount directories under $MOUNT_POINT" \
+            ui_cmd "Creating directories in target root" \
                 mkdir -p "${MOUNT_POINT}/boot" "${MOUNT_POINT}/home" "${MOUNT_POINT}/.snapshots" "${MOUNT_POINT}/var/log"
 
             ui_cmd "Mounting subvolume @home" \
@@ -845,13 +938,10 @@ step_install() {
 
         ui_cmd "Mounting EFI partition to ${MOUNT_POINT}/boot" \
             mount "$efi_part" "${MOUNT_POINT}/boot"
-    else
-        ui_info "Using pre-mounted filesystem at $MOUNT_POINT"
     fi
 
-    # 2. Base Packages + KDE Plasma + Limine (Pacstrap)
-    echo ""
-    ui_step 2 6 "Installing Base Packages, KDE Plasma & Limine"
+    # Phase 2: Installing Packages (Pacstrap)
+    ui_progress_bar 2 6 "Installing Base System, KDE Plasma & Limine..." "Tip: Super + Space opens the application launcher"
 
     local base_pkgs=(
         "base"
@@ -868,14 +958,12 @@ step_install() {
         "less"
         "limine"
         "efibootmgr"
-        # Audio
         "pipewire"
         "wireplumber"
         "pipewire-audio"
         "pipewire-alsa"
         "pipewire-pulse"
         "pipewire-jack"
-        # KDE Plasma Desktop Suite
         "plasma-meta"
         "plasma-wayland-session"
         "kde-applications-meta"
@@ -893,36 +981,26 @@ step_install() {
     fi
 
     if [ "$INSTALL_DEV_TOOLS" -eq 1 ]; then
-        base_pkgs+=(
-            "git"
-            "neovim"
-            "zsh"
-            "starship"
-            "tmux"
-            "ripgrep"
-            "fd"
-            "htop"
-        )
+        base_pkgs+=("git" "neovim" "zsh" "starship" "tmux" "ripgrep" "fd" "htop")
     fi
 
     if [ "$INSTALL_BLUETOOTH" -eq 1 ]; then
         base_pkgs+=("bluez" "bluez-utils" "bluedevil")
     fi
 
-    ui_cmd "Executing pacstrap on $MOUNT_POINT with ${#base_pkgs[@]} packages" \
+    ui_cmd "Running pacstrap with ${#base_pkgs[@]} packages" \
         pacstrap -K "$MOUNT_POINT" "${base_pkgs[@]}"
 
-    ui_cmd "Generating /etc/fstab using genfstab -U" \
+    ui_cmd "Generating /etc/fstab" \
         bash -c "genfstab -U '$MOUNT_POINT' >> '${MOUNT_POINT}/etc/fstab'"
 
-    # 3. Localization & Hostname
-    echo ""
-    ui_step 3 6 "Configuring Localization, Timezone & Hostname"
+    # Phase 3: Localization & Network
+    ui_progress_bar 3 6 "Configuring Localization & Network..." "Tip: Super + Return launches your terminal"
 
     ui_cmd "Setting timezone to $SYSTEM_TIMEZONE" \
         arch-chroot "$MOUNT_POINT" ln -sf "/usr/share/zoneinfo/$SYSTEM_TIMEZONE" /etc/localtime
 
-    ui_cmd "Syncing hardware clock" \
+    ui_cmd "Synchronizing hardware clock" \
         arch-chroot "$MOUNT_POINT" hwclock --systohc
 
     ui_cmd "Configuring /etc/locale.gen" \
@@ -947,9 +1025,8 @@ step_install() {
 127.0.1.1   ${SYSTEM_HOSTNAME}.localdomain ${SYSTEM_HOSTNAME}
 EOF"
 
-    # 4. User Accounts & Security
-    echo ""
-    ui_step 4 6 "Configuring Users & Sudo Permissions"
+    # Phase 4: User Accounts & Security
+    ui_progress_bar 4 6 "Setting Up User Accounts & Sudo..." "Tip: Super + E opens the Dolphin file manager"
 
     local user_shell="/bin/bash"
     if [ "$INSTALL_DEV_TOOLS" -eq 1 ]; then
@@ -959,13 +1036,13 @@ EOF"
     ui_cmd "Setting root password" \
         bash -c "echo 'root:${ROOT_PASSWORD}' | arch-chroot '$MOUNT_POINT' chpasswd"
 
-    ui_cmd "Creating primary user account: $USER_NAME ($USER_REALNAME)" \
+    ui_cmd "Creating primary user $USER_NAME" \
         arch-chroot "$MOUNT_POINT" useradd -m -g users -G wheel,storage,power,audio,video -s "$user_shell" -c "$USER_REALNAME" "$USER_NAME"
 
     ui_cmd "Setting password for $USER_NAME" \
         bash -c "echo '${USER_NAME}:${USER_PASSWORD}' | arch-chroot '$MOUNT_POINT' chpasswd"
 
-    ui_cmd "Configuring wheel group sudo rights" \
+    ui_cmd "Configuring wheel group sudoers" \
         bash -c "cat <<EOF > '${MOUNT_POINT}/etc/sudoers.d/10-duckling-wheel'
 %wheel ALL=(ALL:ALL) ALL
 Defaults timestamp_timeout=30
@@ -985,17 +1062,16 @@ chmod 0440 '${MOUNT_POINT}/etc/sudoers.d/10-duckling-wheel'"
                 extra_groups="users,wheel,storage,power,audio,video"
             fi
 
-            ui_cmd "Creating extra user '$e_user' (Sudo: $e_sudo)" \
+            ui_cmd "Creating extra user account: $e_user" \
                 arch-chroot "$MOUNT_POINT" useradd -m -g users -G "$extra_groups" -s "$user_shell" -c "$e_fullname" "$e_user"
 
-            ui_cmd "Setting password for extra user '$e_user'" \
+            ui_cmd "Setting password for $e_user" \
                 bash -c "echo '${e_user}:${e_pass}' | arch-chroot '$MOUNT_POINT' chpasswd"
         done
     fi
 
-    # 5. ducklingOS 1 "Obsidian" Identity & Theming
-    echo ""
-    ui_step 5 6 "Applying ducklingOS 1 \"Obsidian\" Branding"
+    # Phase 5: ducklingOS Branding & Memory Optimization
+    ui_progress_bar 5 6 "Applying ducklingOS 1 \"Obsidian\" Theme & Branding..." "Tip: Super + W closes the focused window"
 
     ui_cmd "Writing /etc/os-release" \
         bash -c "cat <<EOF > '${MOUNT_POINT}/etc/os-release'
@@ -1007,7 +1083,7 @@ VERSION=\"1\"
 VERSION_ID=\"1\"
 VERSION_CODENAME=\"Obsidian\"
 BUILD_ID=rolling
-ANSI_COLOR=\"0;35\"
+ANSI_COLOR=\"0;33\"
 HOME_URL=\"https://ducklingos.org\"
 DOCUMENTATION_URL=\"https://wiki.ducklingos.org\"
 SUPPORT_URL=\"https://ducklingos.org/support\"
@@ -1017,13 +1093,14 @@ EOF"
 
     ui_cmd "Writing /etc/issue" \
         bash -c "cat <<EOF > '${MOUNT_POINT}/etc/issue'
-   ____            _    _ _             ___  ____  
-  / __ \__  _______| | _| (_)_ __   __ _/ _ \/ ___| 
- / / _\` | | | / __/ |/ / | | '_ \ / _\` | | | \___ \ 
-| | (_| | |_| | (_|   <| | | | | | (_| | |_| |___) |
- \ \__,_|\__,_|\___\_|\_\_|_|_| |_|\__, |\___/|____/ 
-  \____/                           |___/             
-  ducklingOS 1 \"Obsidian\" (KDE Plasma) - \r (\l)
+██████▄  ███  ███  ▄████▄  ███  ███ ███      ████ ███  ███  ▄████▄ 
+███  ███ ███  ███ ███  ███ ███ ▄██▀ ███       ██  ████ ███ ███  ███
+███  ███ ███  ███ ███      ███████  ███       ██  ████████ ███     
+███  ███ ███  ███ ███      █████▄   ███       ██  ███ ████ ███ ████
+███  ███ ███  ███ ███      ███ ▀██▄ ███       ██  ███  ███ ███  ███
+███  ███ ███  ███ ███  ███ ███  ███ ███  ███  ██  ███  ███ ███  ███
+██████▀   ▀████▀   ▀████▀  ███  ███ ████████ ████ ███  ███  ▀█████▀
+ducklingOS 1 \"Obsidian\" (KDE Plasma) - \r (\l)
 EOF"
 
     if [ "$SWAP_TYPE" = "zram" ]; then
@@ -1036,7 +1113,7 @@ EOF"
     elif [ "$SWAP_TYPE" = "swapfile" ]; then
         ui_cmd "Creating $SWAP_SIZE swapfile" \
             arch-chroot "$MOUNT_POINT" fallocate -l "$SWAP_SIZE" /swapfile
-        ui_cmd "Securing swapfile permissions" \
+        ui_cmd "Setting swapfile permissions" \
             arch-chroot "$MOUNT_POINT" chmod 600 /swapfile
         ui_cmd "Formatting swapfile" \
             arch-chroot "$MOUNT_POINT" mkswap /swapfile
@@ -1044,15 +1121,13 @@ EOF"
             bash -c "echo '/swapfile none swap defaults 0 0' >> '${MOUNT_POINT}/etc/fstab'"
     fi
 
-    # 6. Limine Bootloader Installation & Services
-    echo ""
-    ui_step 6 6 "Installing Limine Bootloader & Enabling System Services"
+    # Phase 6: Limine Bootloader & Services
+    ui_progress_bar 6 6 "Installing Limine Bootloader & Activating Services..." "Tip: Super + F toggles full screen"
 
-    # Limine EFI installation
-    ui_cmd "Creating EFI directory for Limine (/boot/EFI/BOOT)" \
+    ui_cmd "Preparing Limine EFI directory (/boot/EFI/BOOT)" \
         mkdir -p "${MOUNT_POINT}/boot/EFI/BOOT"
 
-    ui_cmd "Deploying Limine EFI binary (BOOTX64.EFI)" \
+    ui_cmd "Deploying Limine BOOTX64.EFI executable" \
         bash -c "cp '${MOUNT_POINT}/usr/share/limine/BOOTX64.EFI' '${MOUNT_POINT}/boot/EFI/BOOT/BOOTX64.EFI' || true"
 
     local root_kernel_cmd="root=${root_part} rw quiet"
@@ -1060,13 +1135,13 @@ EOF"
         root_kernel_cmd="root=${root_part} rootflags=subvol=@ rw quiet"
     fi
 
-    ui_cmd "Creating Limine configuration file (/boot/limine.conf)" \
+    ui_cmd "Writing Limine configuration (/boot/limine.conf)" \
         bash -c "cat <<EOF > '${MOUNT_POINT}/boot/limine.conf'
-# Limine Configuration for ducklingOS 1 \"Obsidian\"
+# Limine Bootloader Configuration for ducklingOS 1 \"Obsidian\"
 timeout: 3
 interface_branding: ducklingOS 1 \"Obsidian\" (KDE Plasma)
-interface_branding_color: 5
-term_palette: 000000;aa0000;00aa00;aa5500;0000aa;aa00aa;00aaaa;aaaaaa;555555;ff5555;55ff55;ffff55;5555ff;ff55ff;55ffff;ffffff
+interface_branding_color: 3
+term_palette: 160b24;f87171;f5e042;fbbf24;a78bfa;c084fc;38bdf8;e2e8f0;7e6c99;f87171;f5e042;fbbf24;a78bfa;c084fc;38bdf8;ffffff
 
 /ducklingOS 1 \"Obsidian\" (KDE Plasma - ${SYSTEM_KERNEL})
     protocol: linux
@@ -1084,7 +1159,6 @@ EOF"
     ui_cmd "Registering Limine with UEFI boot manager via efibootmgr" \
         arch-chroot "$MOUNT_POINT" efibootmgr --create --disk "$TARGET_DISK" --part 1 --loader '/EFI/BOOT/BOOTX64.EFI' --label 'ducklingOS (Limine)' --unicode || true
 
-    # Enable systemd services
     ui_cmd "Enabling NetworkManager" \
         arch-chroot "$MOUNT_POINT" systemctl enable NetworkManager.service
 
@@ -1096,7 +1170,6 @@ EOF"
             arch-chroot "$MOUNT_POINT" systemctl enable bluetooth.service
     fi
 
-    # Dev preview manifest
     if [ "$DEV_MODE" -eq 1 ]; then
         mkdir -p "${PREVIEW_DIR}"
         cat <<EOF > "${PREVIEW_DIR}/simulation_manifest.txt"
@@ -1113,62 +1186,69 @@ Filesystem: $TARGET_FILESYSTEM
 Kernel: $SYSTEM_KERNEL
 Desktop: KDE Plasma (Wayland)
 Bootloader: Limine
+Theme: Dark Violet (#160b24) & Bright Yellow (#f5e042)
 EOF
     fi
 
-    # Finish Screen
+    # Completion View
+    get_term_size
     ui_clear
-    ui_banner
+    ui_vertical_pad 14
+    ui_logo
 
     if [ "$DEV_MODE" -eq 1 ]; then
         gum style \
-            --foreground "$COLOR_SUCCESS" \
-            --border double \
-            --border-foreground "$COLOR_SUCCESS" \
-            --padding "1 2" \
-            --margin "1 0" \
-            " 🎉 DEV TEST RUN COMPLETED SUCCESSFULLY! " \
-            "" \
-            " ducklingOS 1 \"Obsidian\" (KDE Plasma & Limine) simulated successfully." \
-            " Simulation manifest stored at: ${PREVIEW_DIR}/simulation_manifest.txt" \
-            " No storage or system modifications were made."
+            --foreground "$OMARCHY_YELLOW" \
+            --bold \
+            --align center \
+            --width "$TERM_COLS" \
+            "🎉 DEV TEST RUN COMPLETED SUCCESSFULLY!"
+        echo ""
+        gum style \
+            --foreground "$OMARCHY_ITEM" \
+            --align center \
+            --width "$TERM_COLS" \
+            "Simulation finished without touching your physical storage or host system." \
+            "Test preview files written to: ${PREVIEW_DIR}"
     else
         gum style \
-            --foreground "$COLOR_SUCCESS" \
-            --border double \
-            --border-foreground "$COLOR_SUCCESS" \
-            --padding "1 2" \
-            --margin "1 0" \
-            " 🚀 ducklingOS 1 \"Obsidian\" INSTALLED SUCCESSFULLY! " \
-            "" \
-            " Desktop: KDE Plasma 6" \
-            " Bootloader: Limine" \
-            " You may now reboot into ducklingOS 1." \
-            " Command to reboot: umount -R /mnt && reboot"
+            --foreground "$OMARCHY_YELLOW" \
+            --bold \
+            --align center \
+            --width "$TERM_COLS" \
+            "🚀 ducklingOS 1 \"Obsidian\" INSTALLED SUCCESSFULLY!"
+        echo ""
+        gum style \
+            --foreground "$OMARCHY_ITEM" \
+            --align center \
+            --width "$TERM_COLS" \
+            "Desktop: KDE Plasma 6 (Wayland)  ·  Bootloader: Limine" \
+            "You may now unmount and reboot into your fresh ducklingOS system." \
+            "Command: umount -R /mnt && reboot"
     fi
+    echo ""
 }
 
 # ------------------------------------------------------------------------------
-# Main Entry Point & CLI Parsing
+# Entrypoint & CLI Parsing
 # ------------------------------------------------------------------------------
 print_usage() {
     cat <<EOF
-ducklingOS 1 "Obsidian" - All-in-One Installer
-(KDE Plasma Edition with Limine Bootloader)
+ducklingOS 1 "Obsidian" - Installer (Dark Violet & Yellow Centered Theme)
 
 Usage:
   sudo ./install.sh [options]
 
 Options:
-  --dev               Run in dry-run simulation mode (no system or disk modifications)
-  --test-preset       Run with predefined automated choices (for CI / testing)
+  --dev               Run in simulation / dry-run mode (no changes made to system or disks)
+  --test-preset       Run with predefined automated answers (ideal for tests / CI)
   -h, --help          Show this help message and exit
-  -v, --version       Display installer version and information
+  -v, --version       Display installer version and codename
 
 Examples:
   ./install.sh --dev              # Interactive TUI in test mode (no root required)
-  ./install.sh --dev --test-preset # Headless test run with dry-run output
-  sudo ./install.sh               # Live installation onto hardware
+  ./install.sh --dev --test-preset # Automated test run with dry-run output
+  sudo ./install.sh               # Live production installation on target hardware
 EOF
 }
 
@@ -1183,7 +1263,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -v|--version)
-            echo "${DISTRO_FULL_NAME} Installer (KDE Plasma + Limine)"
+            echo "${DISTRO_FULL_NAME} Installer (Dark Violet & Yellow Theme)"
             exit 0
             ;;
         -h|--help)
@@ -1202,7 +1282,7 @@ check_gum_installed
 
 if [ "$DEV_MODE" -ne 1 ] && [ "$EUID" -ne 0 ]; then
     ui_error "The live installer must be run as root (or with sudo)."
-    echo -e "Tip: You can test the installer without root using: \033[1;36m./install.sh --dev\033[0m"
+    echo -e "Tip: You can test the installer without root using: \033[38;2;245;224;66m./install.sh --dev\033[0m"
     exit 1
 fi
 
