@@ -850,9 +850,6 @@ step_software() {
     esac
 
     echo ""
-    ui_info "Desktop Environment: KDE Plasma 6 (Wayland Session)"
-    ui_info "Bootloader: Limine Bootloader"
-    echo ""
 
     if ui_confirm "Install Gaming Suite (Steam, Proton, Heroic Launcher, Lutris, GameMode, MangoHud)?"; then
         INSTALL_GAMING=1
