@@ -1066,7 +1066,6 @@ step_install() {
         "pipewire-pulse"
         "pipewire-jack"
         "plasma-meta"
-        "plasma-wayland-session"
         "kde-applications-meta"
         "konsole"
         "dolphin"
