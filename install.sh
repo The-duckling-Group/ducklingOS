@@ -1448,7 +1448,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --installation)
+        --installation|--install)
             export INSTALLATION_MODE=1
             shift
             ;;
