@@ -28,7 +28,7 @@ export DEV_MODE=0
 export TEST_PRESET=0
 export INSTALLATION_MODE=0
 export DUCKLINGOS_REPO="the-duckling-group/ducklingOS"
-export DUCKLINGOS_BRANCH="main"
+export DUCKLINGOS_BRANCH="dev"
 export MANIFEST_RAW_URL="https://raw.githubusercontent.com/${DUCKLINGOS_REPO}/${DUCKLINGOS_BRANCH}/system-update.json"
 export MANIFEST_RELEASE_API="https://api.github.com/repos/${DUCKLINGOS_REPO}/releases/latest"
 export UPDATE_SCRIPT_RAW_URL="https://raw.githubusercontent.com/${DUCKLINGOS_REPO}/${DUCKLINGOS_BRANCH}/update.sh"
@@ -386,6 +386,10 @@ fetch_latest_release_metadata() {
             chmod +x "$tmp_update"
             LOCAL_UPDATE_SCRIPT="$tmp_update"
             ui_success "Fetched latest update.sh from GitHub (${DUCKLINGOS_REPO})!"
+        elif curl -fsSL "https://raw.githubusercontent.com/${DUCKLINGOS_REPO}/dev/update.sh" -o "$tmp_update" 2>/dev/null && [ -s "$tmp_update" ]; then
+            chmod +x "$tmp_update"
+            LOCAL_UPDATE_SCRIPT="$tmp_update"
+            ui_success "Fetched latest update.sh from GitHub dev branch (${DUCKLINGOS_REPO})!"
         elif [ -f "${BASH_SOURCE[0]%/*}/update.sh" ]; then
             LOCAL_UPDATE_SCRIPT="${BASH_SOURCE[0]%/*}/update.sh"
             ui_info "Using local update.sh bundled with installer."
@@ -1282,8 +1286,10 @@ EOF"
     ui_cmd "Installing ducklingos CLI and update suite" \
         bash -c "mkdir -p '${MOUNT_POINT}/usr/local/bin' && \
 mkdir -p '${MOUNT_POINT}/var/lib/ducklingos' && \
-cp '${LOCAL_UPDATE_SCRIPT}' '${MOUNT_POINT}/usr/local/bin/ducklingos-update' 2>/dev/null || \
-curl -fsSL '${UPDATE_SCRIPT_RAW_URL}' -o '${MOUNT_POINT}/usr/local/bin/ducklingos-update' 2>/dev/null || true && \
+{ [ -f '${LOCAL_UPDATE_SCRIPT}' ] && cp '${LOCAL_UPDATE_SCRIPT}' '${MOUNT_POINT}/usr/local/bin/ducklingos-update'; } || \
+curl -fsSL '${UPDATE_SCRIPT_RAW_URL}' -o '${MOUNT_POINT}/usr/local/bin/ducklingos-update' || \
+curl -fsSL 'https://raw.githubusercontent.com/${DUCKLINGOS_REPO}/dev/update.sh' -o '${MOUNT_POINT}/usr/local/bin/ducklingos-update' || \
+curl -fsSL 'https://raw.githubusercontent.com/${DUCKLINGOS_REPO}/main/update.sh' -o '${MOUNT_POINT}/usr/local/bin/ducklingos-update' || true && \
 chmod +x '${MOUNT_POINT}/usr/local/bin/ducklingos-update' 2>/dev/null || true && \
 cat <<'STATE_JSON' > '${MOUNT_POINT}/var/lib/ducklingos/installed-versions.json'
 ${REMOTE_RELEASE_JSON}
@@ -1344,12 +1350,17 @@ chmod +x '${MOUNT_POINT}/usr/local/bin/pacman'"
         update_runner="${MOUNT_POINT}/usr/local/bin/ducklingos-update"
     fi
 
-    local update_cmd=( "$update_runner" "--install" "--target-root=${MOUNT_POINT}" "--repo=${DUCKLINGOS_REPO}" )
-    if [ "$DEV_MODE" -eq 1 ]; then
-        update_cmd+=( "--dev" "--test-preset" )
+    if [ -f "$update_runner" ]; then
+        chmod +x "$update_runner" 2>/dev/null || true
+        local update_cmd=( "$update_runner" "--install" "--target-root=${MOUNT_POINT}" "--repo=${DUCKLINGOS_REPO}" )
+        if [ "$DEV_MODE" -eq 1 ]; then
+            update_cmd+=( "--dev" "--test-preset" )
+        fi
+        ui_cmd "Executing ducklingOS Updater (--install mode)" \
+            "${update_cmd[@]}"
+    else
+        ui_warn "ducklingos-update not found. Skipping initial update app rollout phase."
     fi
-    ui_cmd "Executing ducklingOS Updater (--install mode)" \
-        "${update_cmd[@]}"
 
     if [ "$DEV_MODE" -eq 1 ]; then
         mkdir -p "${PREVIEW_DIR}"
