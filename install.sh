@@ -479,8 +479,6 @@ step_welcome() {
     fi
 
     ui_info "Target Release: ${DISTRO_NAME} (v${DISTRO_MINI_VERSION} \"${DISTRO_CODENAME}\")"
-    ui_info "Desktop Environment: KDE Plasma 6"
-    ui_info "Bootloader: Limine"
 
     ui_footer_hint "enter continue  ·  ctrl+c exit"
 
@@ -912,8 +910,6 @@ step_review() {
         "${lpad}Filesystem:     ${TARGET_FILESYSTEM^^}" \
         "${lpad}Swap Strategy:  ${SWAP_TYPE}" \
         "${lpad}Kernel:         ${SYSTEM_KERNEL}" \
-        "${lpad}Desktop:        KDE Plasma 6 (Wayland)" \
-        "${lpad}Bootloader:     Limine" \
         "${lpad}Gaming Suite:   $([ "$INSTALL_GAMING" -eq 1 ] && echo " Yes (Steam, Proton/ProtonUp, Heroic, Lutris, MangoHud)" || echo " No")" \
         "${lpad}Developer Tools:$([ "$INSTALL_DEV_TOOLS" -eq 1 ] && echo " Yes" || echo " No")" \
         "${lpad}Bluetooth:      $([ "$INSTALL_BLUETOOTH" -eq 1 ] && echo " Yes" || echo " No")"
