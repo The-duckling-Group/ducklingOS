@@ -625,7 +625,7 @@ step_users() {
     fi
 
     while true; do
-        USER_NAME=$(ui_input "Primary Username:" "e.g. eymen, obsidian, duckling" "")
+        USER_NAME=$(ui_input "Primary Username:" "e.g. duckling, obsidian, user" "")
         if [[ "$USER_NAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
             if [ "$USER_NAME" = "root" ]; then
                 ui_error "Primary user cannot be 'root'."
@@ -637,7 +637,7 @@ step_users() {
         fi
     done
 
-    USER_REALNAME=$(ui_input "Full Name / Display Name:" "e.g. Eymen, ducklingOS User" "$USER_NAME")
+    USER_REALNAME=$(ui_input "Full Name / Display Name:" "e.g. ducklingOS User" "$USER_NAME")
 
     while true; do
         echo ""
