@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# ducklingOS 1 "Obsidian" - Standalone Installer
+# ducklingOS - Standalone Installer
 # ==============================================================================
 # Theme: Omarchy Minimalist Pixel-TUI
 # Colors:
@@ -11,7 +11,7 @@
 #   - Fully centered both horizontally and vertically across any terminal resolution
 # Desktop: KDE Plasma 6 (Wayland)
 # Bootloader: Limine
-# Mode: Live or --dev simulation
+# Mode: Live, --installation or --dev simulation
 # ==============================================================================
 
 set -eo pipefail
@@ -22,10 +22,18 @@ set -eo pipefail
 export DISTRO_NAME="ducklingOS"
 export DISTRO_VERSION="1"
 export DISTRO_CODENAME="Obsidian"
-export DISTRO_FULL_NAME="${DISTRO_NAME} ${DISTRO_VERSION} \"${DISTRO_CODENAME}\""
+export DISTRO_FULL_NAME="${DISTRO_NAME}"
 
 export DEV_MODE=0
 export TEST_PRESET=0
+export INSTALLATION_MODE=0
+export DUCKLINGOS_REPO="the-duckling-group/ducklingOS"
+export DUCKLINGOS_BRANCH="main"
+export MANIFEST_RAW_URL="https://raw.githubusercontent.com/${DUCKLINGOS_REPO}/${DUCKLINGOS_BRANCH}/system-update.json"
+export MANIFEST_RELEASE_API="https://api.github.com/repos/${DUCKLINGOS_REPO}/releases/latest"
+export UPDATE_SCRIPT_RAW_URL="https://raw.githubusercontent.com/${DUCKLINGOS_REPO}/${DUCKLINGOS_BRANCH}/update.sh"
+export REMOTE_RELEASE_JSON=""
+
 export PREVIEW_DIR="/tmp/ducklingos-dev-preview"
 
 # Localization Defaults
@@ -34,7 +42,7 @@ export SYSTEM_LOCALE="en_US.UTF-8"
 export SYSTEM_TIMEZONE="Europe/Berlin"
 
 # Network Defaults
-export SYSTEM_HOSTNAME="duckling-obsidian"
+export SYSTEM_HOSTNAME="ducklingos"
 
 # Primary User Defaults
 export USER_NAME=""
@@ -61,6 +69,7 @@ export SYSTEM_PROFILE="kde"         # KDE Plasma 6
 export SYSTEM_BOOTLOADER="limine"   # Limine
 export INSTALL_DEV_TOOLS=1
 export INSTALL_BLUETOOTH=1
+export INSTALL_GAMING=1
 
 # ------------------------------------------------------------------------------
 # Color Palette: Dark Violet & Bright Yellow
@@ -105,32 +114,34 @@ ui_vertical_pad() {
     fi
 }
 
+# ------------------------------------------------------------------------------
+# Dependency Verification & Setup
+# ------------------------------------------------------------------------------
 check_gum_installed() {
     if ! command -v gum &>/dev/null; then
         echo -e "\033[38;2;245;224;66m[!] 'gum' is required for the ducklingOS installer.\033[0m"
-        if [ "$DEV_MODE" -eq 1 ] && [ "$EUID" -ne 0 ]; then
-            echo -e "\033[38;2;248;113;113mPlease install 'gum' using: sudo pacman -S gum\033[0m"
-            exit 1
-        elif command -v pacman &>/dev/null && [ "$EUID" -eq 0 ]; then
-            echo -e "\033[38;2;192;132;252m[*] Installing 'gum' via pacman...\033[0m"
+        echo -e "\033[38;2;192;132;252m[*] Installing 'gum' via pacman...\033[0m"
+        if [ "$DEV_MODE" -eq 1 ]; then
+            echo -e "[DEV SIMULATION] pacman -Sy --noconfirm gum"
+        else
             pacman -Sy --noconfirm gum || {
-                echo -e "\033[38;2;248;113;113mFailed to install gum. Aborting.\033[0m"
+                echo -e "\033[38;2;248;113;113m[ERROR] Failed to install 'gum'. Please install it manually.\033[0m"
                 exit 1
             }
-        else
-            echo -e "\033[38;2;248;113;113mError: gum is missing and cannot be installed automatically.\033[0m"
-            exit 1
         fi
     fi
 }
 
+# ------------------------------------------------------------------------------
+# TUI Framework & Styling (Centered Architecture)
+# ------------------------------------------------------------------------------
 ui_clear() {
     clear 2>/dev/null || true
-    # Set dark violet background color in supported terminal emulators
+    # Emit OSC 11 terminal background color escape code
     printf "\033]11;%s\007" "$OMARCHY_BG" 2>/dev/null || true
 }
 
-# Center-aligned Yellow Pixel Wordmark Logo
+# Center-aligned Yellow Pixel Wordmark Logo (ducklingOS with lowercase "duckling")
 ui_logo() {
     get_term_size
     gum style \
@@ -138,13 +149,17 @@ ui_logo() {
         --bold \
         --align center \
         --width "$TERM_COLS" \
-        "██████▄  ███  ███  ▄████▄  ███  ███ ███      ████ ███  ███  ▄████▄ " \
-        "███  ███ ███  ███ ███  ███ ███ ▄██▀ ███       ██  ████ ███ ███  ███" \
-        "███  ███ ███  ███ ███      ███████  ███       ██  ████████ ███     " \
-        "███  ███ ███  ███ ███      █████▄   ███       ██  ███ ████ ███ ████" \
-        "███  ███ ███  ███ ███      ███ ▀██▄ ███       ██  ███  ███ ███  ███" \
-        "███  ███ ███  ███ ███  ███ ███  ███ ███  ███  ██  ███  ███ ███  ███" \
-        "██████▀   ▀████▀   ▀████▀  ███  ███ ████████ ████ ███  ███  ▀█████▀"
+        "     █████                     █████      ████   ███                         ███████     █████████ " \
+        "    ░░███                     ░░███      ░░███  ░░░                        ███░░░░░███  ███░░░░░███" \
+        "  ███████  █████ ████  ██████  ░███ █████ ░███  ████  ████████    ███████ ███     ░░███░███    ░░░ " \
+        " ███░░███ ░░███ ░███  ███░░███ ░███░░███  ░███ ░░███ ░░███░░███  ███░░███░███      ░███░░█████████ " \
+        "░███ ░███  ░███ ░███ ░███ ░░░  ░██████░   ░███  ░███  ░███ ░███ ░███ ░███░███      ░███ ░░░░░░░░███" \
+        "░███ ░███  ░███ ░███ ░███  ███ ░███░░███  ░███  ░███  ░███ ░███ ░███ ░███░░███     ███  ███    ░███" \
+        "░░████████ ░░████████░░██████  ████ █████ █████ █████ ████ █████░░███████ ░░░███████░  ░░█████████ " \
+        " ░░░░░░░░   ░░░░░░░░  ░░░░░░  ░░░░ ░░░░░ ░░░░░ ░░░░░ ░░░░ ░░░░░  ░░░░░███   ░░░░░░░     ░░░░░░░░░  " \
+        "                                                                 ███ ░███                          " \
+        "                                                                ░░██████                           " \
+        "                                                                 ░░░░░░                            "
     echo ""
 }
 
@@ -259,8 +274,8 @@ ui_confirm() {
         --prompt.foreground="$OMARCHY_HEADER" \
         --selected.background="$OMARCHY_YELLOW" \
         --selected.foreground="#160b24" \
-        --unselected.background="$OMARCHY_TRACK" \
-        --unselected.foreground="$OMARCHY_ITEM" \
+        --unselected.background="#22123b" \
+        --unselected.foreground="#e2e8f0" \
         --affirmative="$affirmative" \
         --negative="$negative" \
         "${lpad}${prompt}"
@@ -292,77 +307,126 @@ ui_error() {
 
 # Centered Progress Bar (Omarchy Style in Dark Violet & Yellow)
 ui_progress_bar() {
-    local current="$1"
+    local step="$1"
     local total="$2"
-    local status_text="$3"
-    local tip_text="${4:-Tip: Super + K shows all the key bindings}"
+    local title="$3"
+    local tip="${4:-}"
+    local lpad
+    lpad=$(get_left_pad 42)
 
-    local width=42
-    local percent=$(( current * 100 / total ))
-    local filled=$(( width * current / total ))
-    local empty=$(( width - filled ))
+    ui_screen_header "$title" 16
 
-    get_term_size
-    ui_clear
-    ui_vertical_pad 15
-    ui_logo
-    ui_dev_badge
+    local filled=$(( (step * 42) / total ))
+    local empty=$(( 42 - filled ))
+    local bar_f=""
+    local bar_e=""
 
-    # Status line centered
-    gum style \
-        --foreground "$OMARCHY_HEADER" \
-        --align center \
-        --width "$TERM_COLS" \
-        "$status_text"
-    echo ""
+    for ((i = 0; i < filled; i++)); do bar_f="${bar_f}█"; done
+    for ((i = 0; i < empty; i++)); do bar_e="${bar_e}░"; done
 
-    # Progress track & block centered
-    local filled_spaces="" empty_str=""
-    if [ "$filled" -gt 0 ]; then
-        printf -v filled_spaces "%*s" "$filled" ""
+    echo -e "${lpad}\033[38;2;245;224;66m${bar_f}\033[38;2;58;34;84m${bar_e}\033[0m\n"
+
+    if [ -n "$tip" ]; then
+        gum style \
+            --foreground "$OMARCHY_MUTED" \
+            --align center \
+            --width "$TERM_COLS" \
+            "$tip"
+        echo ""
     fi
-    local filled_str="${filled_spaces// /█}"
-    if [ "$empty" -gt 0 ]; then
-        printf -v empty_str "%*s" "$empty" ""
-    fi
-
-    local bar_lpad
-    bar_lpad=$(get_left_pad "$width")
-    echo -e "${bar_lpad}\033[48;2;42;23;69m\033[38;2;245;224;66m${filled_str}${empty_str}\033[0m"
-    echo ""
-
-    # Shortcut Tip centered
-    gum style \
-        --foreground "$OMARCHY_YELLOW" \
-        --align center \
-        --width "$TERM_COLS" \
-        "$tip_text"
-    echo ""
 }
 
 ui_cmd() {
-    local cmd_desc="$1"
+    local desc="$1"
     shift
-    local cmd=("$@")
     local lpad
     lpad=$(get_left_pad 64)
 
+    echo -e "${lpad}\033[38;2;245;224;66m❯\033[0m \033[38;2;226;232;240m${desc}\033[0m"
+
     if [ "$DEV_MODE" -eq 1 ]; then
-        echo -e "${lpad}\033[38;2;192;132;252m❯ [SIMULATION]\033[0m \033[38;2;226;232;240m$cmd_desc\033[0m"
-        echo -e "${lpad}  \033[38;2;126;108;153m${cmd[*]}\033[0m"
-        mkdir -p "$PREVIEW_DIR"
-        sleep 0.15 2>/dev/null || true
-        return 0
-    else
-        echo -e "${lpad}\033[38;2;245;224;66m❯\033[0m \033[38;2;226;232;240m$cmd_desc\033[0m"
-        "${cmd[@]}"
-        local status=$?
-        if [ $status -ne 0 ]; then
-            ui_error "Failed with exit code $status: ${cmd[*]}"
-            return $status
-        fi
+        echo -e "${lpad}  \033[38;2;126;108;153m[SIMULATION] $*\033[0m"
+        sleep 0.1
         return 0
     fi
+
+    "$@"
+}
+
+# Fetch latest release metadata and update.sh from GitHub
+fetch_latest_release_metadata() {
+    REMOTE_RELEASE_JSON=""
+    LOCAL_UPDATE_SCRIPT="${BASH_SOURCE[0]%/*}/update.sh"
+
+    # 1. Fetch update.sh from GitHub if available, or fall back to local script
+    if [ "$DEV_MODE" -ne 1 ]; then
+        ui_info "Checking GitHub repository for latest update.sh..."
+        local tmp_update="/tmp/ducklingos-update-download.sh"
+        if curl -fsSL "$UPDATE_SCRIPT_RAW_URL" -o "$tmp_update" 2>/dev/null && [ -s "$tmp_update" ]; then
+            chmod +x "$tmp_update"
+            LOCAL_UPDATE_SCRIPT="$tmp_update"
+            ui_success "Fetched latest update.sh from GitHub (${DUCKLINGOS_REPO})!"
+        elif [ -f "${BASH_SOURCE[0]%/*}/update.sh" ]; then
+            LOCAL_UPDATE_SCRIPT="${BASH_SOURCE[0]%/*}/update.sh"
+            ui_info "Using local update.sh bundled with installer."
+        else
+            ui_warn "No local update.sh found. Will attempt GitHub fetch during installation phase."
+        fi
+    fi
+
+    if [ "$DEV_MODE" -eq 1 ]; then
+        REMOTE_RELEASE_JSON='{
+  "os_name": "ducklingOS",
+  "big_version": 1,
+  "big_version_name": "Obsidian",
+  "mini_version": "1.1.0",
+  "codename": "Obsidian 1.1",
+  "release_date": "2026-11-16",
+  "packages": {
+    "pacman": {
+      "system_upgrade": true,
+      "apps": {
+        "ghostty": "latest",
+        "fastfetch": "latest",
+        "firefox": "latest",
+        "mpv": "latest",
+        "btop": "latest",
+        "micro": "latest"
+      }
+    },
+    "aur": {
+      "apps": {}
+    }
+  }
+}'
+    else
+        local api_resp
+        api_resp=$(curl -fsSL -H "Accept: application/vnd.github+json" "$MANIFEST_RELEASE_API" 2>/dev/null || true)
+        if [ -n "$api_resp" ]; then
+            local asset_url
+            asset_url=$(echo "$api_resp" | grep -Po '"browser_download_url":\s*"\K[^"]*system-update\.json' | head -n 1 || echo "")
+            if [ -n "$asset_url" ]; then
+                REMOTE_RELEASE_JSON=$(curl -fsSL "$asset_url" 2>/dev/null || true)
+            fi
+        fi
+        if [ -z "$REMOTE_RELEASE_JSON" ]; then
+            REMOTE_RELEASE_JSON=$(curl -fsSL "$MANIFEST_RAW_URL" 2>/dev/null || true)
+        fi
+    fi
+
+    if [ -n "$REMOTE_RELEASE_JSON" ]; then
+        DISTRO_NAME=$(python3 -c "import json; d=json.loads('''${REMOTE_RELEASE_JSON}'''); print(d.get('os_name', 'ducklingOS'))" 2>/dev/null || echo "ducklingOS")
+        DISTRO_VERSION=$(python3 -c "import json; d=json.loads('''${REMOTE_RELEASE_JSON}'''); print(d.get('big_version', '1'))" 2>/dev/null || echo "1")
+        DISTRO_CODENAME=$(python3 -c "import json; d=json.loads('''${REMOTE_RELEASE_JSON}'''); print(d.get('big_version_name', 'Obsidian'))" 2>/dev/null || echo "Obsidian")
+        DISTRO_MINI_VERSION=$(python3 -c "import json; d=json.loads('''${REMOTE_RELEASE_JSON}'''); print(d.get('mini_version', '1.0.0'))" 2>/dev/null || echo "1.0.0")
+    else
+        DISTRO_NAME="ducklingOS"
+        DISTRO_VERSION="1"
+        DISTRO_CODENAME="Obsidian"
+        DISTRO_MINI_VERSION="1.0.0"
+        REMOTE_RELEASE_JSON='{"os_name":"ducklingOS","big_version":1,"big_version_name":"Obsidian","mini_version":"1.0.0"}'
+    fi
+    DISTRO_FULL_NAME="${DISTRO_NAME}"
 }
 
 # ------------------------------------------------------------------------------
@@ -370,6 +434,7 @@ ui_cmd() {
 # ------------------------------------------------------------------------------
 step_welcome() {
     ui_screen_header "System Diagnostics" 20
+    fetch_latest_release_metadata
 
     if [ -d "/sys/firmware/efi/efivars" ]; then
         ui_success "Boot Mode: UEFI (Optimal for Limine)"
@@ -393,6 +458,7 @@ step_welcome() {
         fi
     fi
 
+    ui_info "Target Release: ${DISTRO_NAME} (v${DISTRO_MINI_VERSION} \"${DISTRO_CODENAME}\")"
     ui_info "Desktop Environment: KDE Plasma 6"
     ui_info "Bootloader: Limine"
 
@@ -404,7 +470,7 @@ step_welcome() {
     fi
 
     echo ""
-    if ! ui_confirm "Ready to configure ducklingOS 1 \"Obsidian\"?"; then
+    if ! ui_confirm "Ready to configure ${DISTRO_NAME}?"; then
         ui_warn "Installation cancelled by user."
         exit 0
     fi
@@ -435,40 +501,42 @@ step_localization() {
         "Custom layout...")
 
     case "$keymap_choice" in
-        "de-latin1"*) SYSTEM_KEYMAP="de-latin1" ;;
-        "us"*)        SYSTEM_KEYMAP="us" ;;
-        "uk"*)        SYSTEM_KEYMAP="uk" ;;
-        "fr"*)        SYSTEM_KEYMAP="fr" ;;
-        "es"*)        SYSTEM_KEYMAP="es" ;;
-        "it"*)        SYSTEM_KEYMAP="it" ;;
-        "ch"*)        SYSTEM_KEYMAP="sg-latin1" ;;
+        "us"*) SYSTEM_KEYMAP="us" ;;
+        "de"*) SYSTEM_KEYMAP="de-latin1" ;;
+        "uk"*) SYSTEM_KEYMAP="uk" ;;
+        "fr"*) SYSTEM_KEYMAP="fr" ;;
+        "es"*) SYSTEM_KEYMAP="es" ;;
+        "it"*) SYSTEM_KEYMAP="it" ;;
+        "ch"*) SYSTEM_KEYMAP="sg" ;;
         "Custom"*)
-            SYSTEM_KEYMAP=$(ui_input "Console keymap:" "us, de-latin1" "us")
+            SYSTEM_KEYMAP=$(ui_input "Custom Keymap:" "e.g. dvorak, pt-latin9" "us")
             ;;
         *) SYSTEM_KEYMAP="us" ;;
     esac
 
-    if [ "$DEV_MODE" -eq 0 ] && command -v loadkeys &>/dev/null; then
-        loadkeys "$SYSTEM_KEYMAP" &>/dev/null || true
+    if [ "$DEV_MODE" -ne 1 ]; then
+        loadkeys "$SYSTEM_KEYMAP" 2>/dev/null || true
     fi
 
     local locale_choice
-    locale_choice=$(ui_choose "System Locale" \
+    locale_choice=$(ui_choose "System Language & Locale" \
         "en_US.UTF-8 (English - United States)" \
         "de_DE.UTF-8 (German - Germany)" \
         "en_GB.UTF-8 (English - Great Britain)" \
         "fr_FR.UTF-8 (French - France)" \
         "es_ES.UTF-8 (Spanish - Spain)" \
+        "it_IT.UTF-8 (Italian - Italy)" \
         "Custom locale...")
 
     case "$locale_choice" in
-        "de_DE"*) SYSTEM_LOCALE="de_DE.UTF-8" ;;
         "en_US"*) SYSTEM_LOCALE="en_US.UTF-8" ;;
+        "de_DE"*) SYSTEM_LOCALE="de_DE.UTF-8" ;;
         "en_GB"*) SYSTEM_LOCALE="en_GB.UTF-8" ;;
         "fr_FR"*) SYSTEM_LOCALE="fr_FR.UTF-8" ;;
         "es_ES"*) SYSTEM_LOCALE="es_ES.UTF-8" ;;
+        "it_IT"*) SYSTEM_LOCALE="it_IT.UTF-8" ;;
         "Custom"*)
-            SYSTEM_LOCALE=$(ui_input "Locale string:" "en_US.UTF-8" "en_US.UTF-8")
+            SYSTEM_LOCALE=$(ui_input "Locale Code:" "e.g. ja_JP.UTF-8, tr_TR.UTF-8" "en_US.UTF-8")
             ;;
         *) SYSTEM_LOCALE="en_US.UTF-8" ;;
     esac
@@ -476,16 +544,14 @@ step_localization() {
     local tz_choice
     tz_choice=$(ui_choose "Timezone" \
         "Europe/Berlin" \
-        "UTC" \
         "Europe/London" \
         "Europe/Paris" \
-        "Europe/Vienna" \
-        "Europe/Zurich" \
         "America/New_York" \
         "America/Chicago" \
         "America/Los_Angeles" \
         "Asia/Tokyo" \
-        "Custom Timezone...")
+        "UTC" \
+        "Custom timezone...")
 
     case "$tz_choice" in
         "Custom"*)
@@ -506,12 +572,12 @@ step_network() {
     ui_screen_header "Network & Hostname Configuration" 16
 
     if [ "$TEST_PRESET" -eq 1 ]; then
-        SYSTEM_HOSTNAME="duckling-obsidian"
+        SYSTEM_HOSTNAME="ducklingos"
         return 0
     fi
 
     while true; do
-        SYSTEM_HOSTNAME=$(ui_input "Hostname:" "e.g. duckling-pc, obsidian-box" "$SYSTEM_HOSTNAME")
+        SYSTEM_HOSTNAME=$(ui_input "Hostname:" "e.g. ducklingos, my-pc" "$SYSTEM_HOSTNAME")
         if [[ "$SYSTEM_HOSTNAME" =~ ^[a-zA-Z0-9][-a-zA-Z0-9]*[a-zA-Z0-9]$ ]] || [[ "$SYSTEM_HOSTNAME" =~ ^[a-zA-Z0-9]$ ]]; then
             break
         else
@@ -523,18 +589,17 @@ step_network() {
 }
 
 # ------------------------------------------------------------------------------
-# Step 4: User Accounts & Extra Users
+# Step 4: User Accounts & Passwords
 # ------------------------------------------------------------------------------
 step_users() {
-    ui_screen_header "User Accounts & Security" 18
+    ui_screen_header "User Account Configuration" 18
 
     if [ "$TEST_PRESET" -eq 1 ]; then
         USER_NAME="duckling"
-        USER_REALNAME="Duckling User"
-        USER_PASSWORD="devpassword123"
-        ROOT_PASSWORD="devpassword123"
+        USER_REALNAME="ducklingOS Default User"
+        USER_PASSWORD="ducklingpassword"
+        ROOT_PASSWORD="ducklingpassword"
         ROOT_PASSWORD_SAME_AS_USER=1
-        EXTRA_USERS=("guest:Guest User:no:guest123")
         return 0
     fi
 
@@ -551,7 +616,7 @@ step_users() {
         fi
     done
 
-    USER_REALNAME=$(ui_input "Full Name / Display Name:" "e.g. Eymen, Obsidian Operator" "$USER_NAME")
+    USER_REALNAME=$(ui_input "Full Name / Display Name:" "e.g. Eymen, ducklingOS User" "$USER_NAME")
 
     while true; do
         echo ""
@@ -573,86 +638,70 @@ step_users() {
     done
 
     echo ""
-    if ui_confirm "Use the same password for 'root' (Superuser)?"; then
-        ROOT_PASSWORD_SAME_AS_USER=1
+    if ui_confirm "Use the same password for system administrator (root)?"; then
         ROOT_PASSWORD="$USER_PASSWORD"
-        ui_success "Root will share the password with '$USER_NAME'."
+        ROOT_PASSWORD_SAME_AS_USER=1
     else
         ROOT_PASSWORD_SAME_AS_USER=0
         while true; do
-            ROOT_PASSWORD=$(ui_password "Root Password:" "Enter root password")
-            if [ -z "$ROOT_PASSWORD" ]; then
-                ui_error "Root password cannot be empty."
-                continue
-            fi
-            local root_confirm
-            root_confirm=$(ui_password "Confirm Root Password:" "Re-type root password")
-            if [ "$ROOT_PASSWORD" = "$root_confirm" ]; then
-                ui_success "Root password verified."
+            ROOT_PASSWORD=$(ui_password "Root Administrator Password:" "Enter root password")
+            local r_confirm
+            r_confirm=$(ui_password "Confirm Root Password:" "Re-type root password")
+            if [ "$ROOT_PASSWORD" = "$r_confirm" ] && [ -n "$ROOT_PASSWORD" ]; then
+                ui_success "Root password confirmed."
                 break
             else
-                ui_error "Passwords do not match."
+                ui_error "Root passwords did not match or were empty."
             fi
         done
     fi
 
-    EXTRA_USERS=()
-    echo ""
+    # Extra Users Loop
     while true; do
-        if ! ui_confirm "Would you like to add an extra user?" "Yes" "No"; then
+        echo ""
+        if ! ui_confirm "Do you want to add an additional local user?"; then
             break
         fi
 
-        local ex_user=""
-        local ex_fullname=""
-        local ex_pass=""
-        local ex_sudo="no"
-
-        while true; do
-            ex_user=$(ui_input "Extra Username:" "e.g. guest, work" "")
-            if [[ "$ex_user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
-                if [ "$ex_user" = "$USER_NAME" ] || [ "$ex_user" = "root" ]; then
-                    ui_error "Username '$ex_user' already exists or is reserved."
-                else
-                    break
-                fi
-            else
-                ui_error "Invalid username. Lowercase alphanumeric only."
-            fi
-        done
-
-        ex_fullname=$(ui_input "Display Name:" "Full Name for $ex_user" "$ex_user")
-
-        while true; do
-            ex_pass=$(ui_password "Password for '$ex_user':" "Enter password")
-            local ex_confirm
-            ex_confirm=$(ui_password "Confirm Password:" "Re-type password")
-            if [ "$ex_pass" = "$ex_confirm" ] && [ -n "$ex_pass" ]; then
-                break
-            else
-                ui_error "Passwords do not match."
-            fi
-        done
-
-        if ui_confirm "Grant administrator (sudo) privileges to '$ex_user'?" "Yes" "No"; then
-            ex_sudo="yes"
-        else
-            ex_sudo="no"
+        local extra_user
+        extra_user=$(ui_input "Additional Username:" "e.g. guest, gaming" "")
+        if [[ ! "$extra_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || [ "$extra_user" = "root" ] || [ "$extra_user" = "$USER_NAME" ]; then
+            ui_error "Invalid or duplicate username."
+            continue
         fi
 
-        EXTRA_USERS+=("${ex_user}:${ex_fullname}:${ex_sudo}:${ex_pass}")
-        ui_success "Added extra user: $ex_user (sudo: $ex_sudo)"
-        echo ""
+        local extra_realname
+        extra_realname=$(ui_input "Full Name:" "Display name" "$extra_user")
+
+        local extra_sudo=0
+        if ui_confirm "Grant sudo administrator privileges to '$extra_user'?"; then
+            extra_sudo=1
+        fi
+
+        local extra_pass
+        while true; do
+            extra_pass=$(ui_password "Password for '$extra_user':" "")
+            local extra_c
+            extra_c=$(ui_password "Confirm Password:" "")
+            if [ "$extra_pass" = "$extra_c" ] && [ -n "$extra_pass" ]; then
+                break
+            else
+                ui_error "Passwords did not match or empty."
+            fi
+        done
+
+        EXTRA_USERS+=("${extra_user}:${extra_realname}:${extra_sudo}:${extra_pass}")
+        ui_success "Added extra user '$extra_user'."
     done
 
     ui_footer_hint
 }
 
 # ------------------------------------------------------------------------------
-# Step 5: Storage & Target Installation
+# Step 5: Target Disk & Partitioning
 # ------------------------------------------------------------------------------
 step_storage() {
-    ui_screen_header "Target Installation Storage" 18
+    ui_screen_header "Storage & Partitioning Setup" 20
 
     local disk_list=()
     local disk_map=()
@@ -670,7 +719,7 @@ step_storage() {
 
     if [ ${#disk_list[@]} -eq 0 ]; then
         if [ "$DEV_MODE" -eq 1 ]; then
-            disk_list+=("/dev/nvme0n1 (512.0G - Obsidian Dev NVMe Drive)" "/dev/sda (1000.0G - Secondary Dev SSD)")
+            disk_list+=("/dev/nvme0n1 (512.0G - ducklingOS Dev NVMe Drive)" "/dev/sda (1000.0G - Secondary Dev SSD)")
             disk_map+=("/dev/nvme0n1" "/dev/sda")
         else
             ui_error "No eligible target storage devices found!"
@@ -689,47 +738,55 @@ step_storage() {
     local selected_entry
     selected_entry=$(ui_choose "Target Disk" "${disk_list[@]}" "Manual Target (Use already mounted /mnt)")
 
-    if [[ "$selected_entry" == *"Manual Target"* ]]; then
+    if [[ "$selected_entry" == "Manual Target"* ]]; then
         TARGET_PARTITION_MODE="manual"
-        TARGET_DISK="manual"
-        ui_info "Using pre-mounted filesystem at $MOUNT_POINT."
+        TARGET_DISK="/mnt"
+        ui_info "Using pre-mounted filesystem under /mnt."
     else
-        TARGET_PARTITION_MODE="auto"
         for i in "${!disk_list[@]}"; do
             if [ "${disk_list[$i]}" = "$selected_entry" ]; then
                 TARGET_DISK="${disk_map[$i]}"
                 break
             fi
         done
-        ui_success "Target installation disk: $TARGET_DISK"
+        TARGET_PARTITION_MODE="auto"
     fi
 
     if [ "$TARGET_PARTITION_MODE" = "auto" ]; then
         local fs_choice
-        fs_choice=$(ui_choose "Filesystem" \
-            "btrfs (Recommended - Subvolumes, Snapshots, zstd compression)" \
-            "ext4 (Standard Classic Linux Filesystem)")
+        fs_choice=$(ui_choose "Filesystem Strategy" \
+            "BTRFS (Recommended - Subvolumes @, @home, @snapshots, ZSTD compression)" \
+            "EXT4 (Classic, Simple & Battle-tested)")
 
-        if [[ "$fs_choice" == *"btrfs"* ]]; then
-            TARGET_FILESYSTEM="btrfs"
-            BTRFS_SUBVOLUMES=1
-        else
-            TARGET_FILESYSTEM="ext4"
-            BTRFS_SUBVOLUMES=0
-        fi
+        case "$fs_choice" in
+            "BTRFS"*)
+                TARGET_FILESYSTEM="btrfs"
+                BTRFS_SUBVOLUMES=1
+                ;;
+            *)
+                TARGET_FILESYSTEM="ext4"
+                BTRFS_SUBVOLUMES=0
+                ;;
+        esac
 
         local swap_choice
-        swap_choice=$(ui_choose "Swap Configuration" \
-            "zram (Recommended: compressed RAM, prolongs SSD life)" \
-            "swapfile-4g (4 GB dedicated swap file)" \
-            "swapfile-8g (8 GB dedicated swap file)" \
-            "none (No swap)")
+        swap_choice=$(ui_choose "Memory Optimization & Swap" \
+            "zram (Fast Compressed In-RAM Swap - Optimal for Modern Systems)" \
+            "swapfile-4g (Dedicated 4GB Swapfile on Disk)" \
+            "swapfile-8g (Dedicated 8GB Swapfile on Disk)" \
+            "none (No Swap Space)")
 
         case "$swap_choice" in
-            "zram"*)        SWAP_TYPE="zram" ;;
-            "swapfile-4g"*) SWAP_TYPE="swapfile"; SWAP_SIZE="4G" ;;
-            "swapfile-8g"*) SWAP_TYPE="swapfile"; SWAP_SIZE="8G" ;;
-            "none"*)        SWAP_TYPE="none" ;;
+            "zram"*) SWAP_TYPE="zram" ;;
+            "swapfile-4g"*)
+                SWAP_TYPE="swapfile"
+                SWAP_SIZE="4G"
+                ;;
+            "swapfile-8g"*)
+                SWAP_TYPE="swapfile"
+                SWAP_SIZE="8G"
+                ;;
+            *) SWAP_TYPE="none" ;;
         esac
     fi
 
@@ -746,6 +803,7 @@ step_software() {
         SYSTEM_KERNEL="linux-zen"
         INSTALL_DEV_TOOLS=1
         INSTALL_BLUETOOTH=1
+        INSTALL_GAMING=1
         return 0
     fi
 
@@ -766,6 +824,12 @@ step_software() {
     ui_info "Desktop Environment: KDE Plasma 6 (Wayland Session)"
     ui_info "Bootloader: Limine Bootloader"
     echo ""
+
+    if ui_confirm "Install Gaming Suite (Steam, Proton, Heroic Launcher, Lutris, GameMode, MangoHud)?"; then
+        INSTALL_GAMING=1
+    else
+        INSTALL_GAMING=0
+    fi
 
     if ui_confirm "Install Developer Toolkit (Neovim, Zsh, Starship, Git, Tmux, Base-Devel)?"; then
         INSTALL_DEV_TOOLS=1
@@ -792,10 +856,7 @@ step_review() {
     if [ ${#EXTRA_USERS[@]} -gt 0 ]; then
         local names=()
         for u in "${EXTRA_USERS[@]}"; do
-            local uname usudo
-            uname=$(echo "$u" | cut -d':' -f1)
-            usudo=$(echo "$u" | cut -d':' -f3)
-            names+=("${uname} (sudo:${usudo})")
+            names+=("$(echo "$u" | cut -d':' -f1)")
         done
         extra_user_summary=$(IFS=', '; echo "${names[*]}")
     fi
@@ -824,6 +885,7 @@ step_review() {
         "${lpad}Kernel:         ${SYSTEM_KERNEL}" \
         "${lpad}Desktop:        KDE Plasma 6 (Wayland)" \
         "${lpad}Bootloader:     Limine" \
+        "${lpad}Gaming Suite:   $([ "$INSTALL_GAMING" -eq 1 ] && echo " Yes (Steam, Proton/ProtonUp, Heroic, Lutris, MangoHud)" || echo " No")" \
         "${lpad}Developer Tools:$([ "$INSTALL_DEV_TOOLS" -eq 1 ] && echo " Yes" || echo " No")" \
         "${lpad}Bluetooth:      $([ "$INSTALL_BLUETOOTH" -eq 1 ] && echo " Yes" || echo " No")"
 
@@ -835,127 +897,113 @@ step_review() {
         return 0
     fi
 
-    if [ "$DEV_MODE" -eq 1 ]; then
-        if ! ui_confirm "Proceed with the test / dry-run simulation?"; then
-            ui_warn "Dry run cancelled."
-            exit 0
-        fi
-    else
-        get_term_size
-        gum style --foreground "$OMARCHY_DANGER" --bold --align center --width "$TERM_COLS" \
-            "⚠ WARNING: ALL DATA ON ${TARGET_DISK} WILL BE PERMANENTLY ERASED!"
-        if ! ui_confirm "Are you ABSOLUTELY sure you want to format and install?" "Yes, format disk" "No, abort"; then
-            ui_warn "Installation cancelled. No changes were made."
-            exit 0
-        fi
+    if ! ui_confirm "WARNING: Are you absolutely certain you want to proceed?"; then
+        ui_warn "Installation aborted by user."
+        exit 0
     fi
 }
 
 # ------------------------------------------------------------------------------
-# Step 8: Installation Engine (Omarchy Progress Bar View)
+# Step 8: Execution Engine
 # ------------------------------------------------------------------------------
 step_install() {
-    local efi_part=""
-    local root_part=""
+    local boot_part="${TARGET_DISK}1"
+    local root_part="${TARGET_DISK}2"
 
-    if [ "$TARGET_PARTITION_MODE" = "auto" ]; then
-        if [[ "$TARGET_DISK" =~ [0-9]$ ]]; then
-            efi_part="${TARGET_DISK}p1"
-            root_part="${TARGET_DISK}p2"
-        else
-            efi_part="${TARGET_DISK}1"
-            root_part="${TARGET_DISK}2"
-        fi
+    if [[ "$TARGET_DISK" =~ nvme ]] || [[ "$TARGET_DISK" =~ mmcblk ]]; then
+        boot_part="${TARGET_DISK}p1"
+        root_part="${TARGET_DISK}p2"
     fi
 
     # Phase 1: Partitioning & Formatting
-    ui_progress_bar 1 6 "Partitioning & Formatting Storage..." "Tip: Super + K shows all the key bindings"
     if [ "$TARGET_PARTITION_MODE" = "auto" ]; then
-        ui_cmd "Wiping existing partition table on $TARGET_DISK" \
-            wipefs -af "$TARGET_DISK"
+        ui_progress_bar 1 6 "Partitioning & Formatting Storage Drive..." "Tip: BTRFS subvolumes enable atomic rollback snapshots"
 
-        ui_cmd "Creating GPT partition label on $TARGET_DISK" \
+        ui_cmd "Unmounting any existing partitions on $TARGET_DISK" \
+            bash -c "umount -R '$MOUNT_POINT' 2>/dev/null || true; swapoff -a 2>/dev/null || true"
+
+        ui_cmd "Creating GPT label on $TARGET_DISK" \
             parted -s "$TARGET_DISK" mklabel gpt
 
         ui_cmd "Creating EFI System Partition (1024 MiB)" \
-            parted -s "$TARGET_DISK" mkpart "ESP" fat32 1MiB 1025MiB
+            parted -s "$TARGET_DISK" mkpart "ESP" fat32 1MiB 1025MiB set 1 esp on
 
-        ui_cmd "Setting ESP boot flag on $efi_part" \
-            parted -s "$TARGET_DISK" set 1 esp on
-
-        ui_cmd "Creating Root Linux Partition" \
+        ui_cmd "Creating Root Partition (Remaining capacity)" \
             parted -s "$TARGET_DISK" mkpart "ducklingOS_Root" 1025MiB 100%
 
-        ui_cmd "Formatting EFI Partition as FAT32 ($efi_part)" \
-            mkfs.fat -F32 "$efi_part"
+        ui_cmd "Formatting EFI System Partition with FAT32" \
+            mkfs.fat -F32 -n "LIMINE_ESP" "$boot_part"
 
         if [ "$TARGET_FILESYSTEM" = "btrfs" ]; then
-            ui_cmd "Formatting Root Partition as Btrfs ($root_part)" \
+            ui_cmd "Formatting Root Partition with BTRFS" \
                 mkfs.btrfs -f -L "ducklingOS" "$root_part"
 
             ui_cmd "Mounting root to construct subvolumes" \
                 mount "$root_part" "$MOUNT_POINT"
 
-            ui_cmd "Creating Btrfs subvolume @" \
+            ui_cmd "Creating @ root subvolume" \
                 btrfs subvolume create "${MOUNT_POINT}/@"
 
-            ui_cmd "Creating Btrfs subvolume @home" \
+            ui_cmd "Creating @home user subvolume" \
                 btrfs subvolume create "${MOUNT_POINT}/@home"
 
-            ui_cmd "Creating Btrfs subvolume @snapshots" \
+            ui_cmd "Creating @snapshots backup subvolume" \
                 btrfs subvolume create "${MOUNT_POINT}/@snapshots"
 
-            ui_cmd "Creating Btrfs subvolume @var_log" \
+            ui_cmd "Creating @var_log system subvolume" \
                 btrfs subvolume create "${MOUNT_POINT}/@var_log"
 
-            ui_cmd "Unmounting temporary root" \
+            ui_cmd "Creating @pkg cache subvolume" \
+                btrfs subvolume create "${MOUNT_POINT}/@pkg"
+
+            ui_cmd "Unmounting temporary BTRFS root" \
                 umount "$MOUNT_POINT"
 
-            ui_cmd "Mounting subvolume @ to $MOUNT_POINT" \
-                mount -o noatime,compress=zstd:1,subvol=@ "$root_part" "$MOUNT_POINT"
+            local btrfs_opts="noatime,compress=zstd:3,discard=async"
 
-            ui_cmd "Creating directories in target root" \
-                mkdir -p "${MOUNT_POINT}/boot" "${MOUNT_POINT}/home" "${MOUNT_POINT}/.snapshots" "${MOUNT_POINT}/var/log"
+            ui_cmd "Mounting @ subvolume at $MOUNT_POINT" \
+                mount -o "subvol=@,${btrfs_opts}" "$root_part" "$MOUNT_POINT"
 
-            ui_cmd "Mounting subvolume @home" \
-                mount -o noatime,compress=zstd:1,subvol=@home "$root_part" "${MOUNT_POINT}/home"
+            ui_cmd "Creating subvolume mountpoints" \
+                mkdir -p "${MOUNT_POINT}/home" "${MOUNT_POINT}/.snapshots" "${MOUNT_POINT}/var/log" "${MOUNT_POINT}/var/cache/pacman/pkg" "${MOUNT_POINT}/boot"
 
-            ui_cmd "Mounting subvolume @snapshots" \
-                mount -o noatime,compress=zstd:1,subvol=@snapshots "$root_part" "${MOUNT_POINT}/.snapshots"
+            ui_cmd "Mounting @home at /home" \
+                mount -o "subvol=@home,${btrfs_opts}" "$root_part" "${MOUNT_POINT}/home"
 
-            ui_cmd "Mounting subvolume @var_log" \
-                mount -o noatime,compress=zstd:1,subvol=@var_log "$root_part" "${MOUNT_POINT}/var/log"
+            ui_cmd "Mounting @snapshots at /.snapshots" \
+                mount -o "subvol=@snapshots,${btrfs_opts}" "$root_part" "${MOUNT_POINT}/.snapshots"
+
+            ui_cmd "Mounting @var_log at /var/log" \
+                mount -o "subvol=@var_log,${btrfs_opts}" "$root_part" "${MOUNT_POINT}/var/log"
+
+            ui_cmd "Mounting @pkg at /var/cache/pacman/pkg" \
+                mount -o "subvol=@pkg,${btrfs_opts}" "$root_part" "${MOUNT_POINT}/var/cache/pacman/pkg"
         else
-            ui_cmd "Formatting Root Partition as EXT4 ($root_part)" \
+            ui_cmd "Formatting Root Partition with EXT4" \
                 mkfs.ext4 -F -L "ducklingOS" "$root_part"
 
-            ui_cmd "Mounting root filesystem to $MOUNT_POINT" \
+            ui_cmd "Mounting EXT4 root at $MOUNT_POINT" \
                 mount "$root_part" "$MOUNT_POINT"
 
             ui_cmd "Creating /boot directory" \
                 mkdir -p "${MOUNT_POINT}/boot"
         fi
 
-        ui_cmd "Mounting EFI partition to ${MOUNT_POINT}/boot" \
-            mount "$efi_part" "${MOUNT_POINT}/boot"
+        ui_cmd "Mounting EFI System Partition at /boot" \
+            mount "$boot_part" "${MOUNT_POINT}/boot"
     fi
 
-    # Phase 2: Installing Packages (Pacstrap)
-    ui_progress_bar 2 6 "Installing Base System, KDE Plasma & Limine..." "Tip: Super + Space opens the application launcher"
+    # Phase 2: Pacstrap Base System
+    ui_progress_bar 2 6 "Installing Arch Base, Linux Zen & KDE Plasma..." "Tip: PipeWire ensures professional ultra-low-latency audio"
 
     local base_pkgs=(
         "base"
         "base-devel"
-        "linux-firmware"
         "$SYSTEM_KERNEL"
         "${SYSTEM_KERNEL}-headers"
-        "sudo"
+        "linux-firmware"
         "networkmanager"
-        "which"
-        "curl"
-        "wget"
-        "nano"
-        "less"
+        "sudo"
         "limine"
         "efibootmgr"
         "pipewire"
@@ -988,6 +1036,24 @@ step_install() {
         base_pkgs+=("bluez" "bluez-utils" "bluedevil")
     fi
 
+    if [ "$INSTALL_GAMING" -eq 1 ]; then
+        base_pkgs+=(
+            "steam"
+            "lutris"
+            "protonup-qt"
+            "gamemode"
+            "lib32-gamemode"
+            "mangohud"
+            "lib32-mangohud"
+            "gamescope"
+            "wine"
+            "wine-gecko"
+            "wine-mono"
+            "vulkan-tools"
+            "flatpak"
+        )
+    fi
+
     ui_cmd "Running pacstrap with ${#base_pkgs[@]} packages" \
         pacstrap -K "$MOUNT_POINT" "${base_pkgs[@]}"
 
@@ -1004,21 +1070,21 @@ step_install() {
         arch-chroot "$MOUNT_POINT" hwclock --systohc
 
     ui_cmd "Configuring /etc/locale.gen" \
-        bash -c "sed -i 's/^#\(${SYSTEM_LOCALE}\)/\1/' '${MOUNT_POINT}/etc/locale.gen' || echo '${SYSTEM_LOCALE} UTF-8' >> '${MOUNT_POINT}/etc/locale.gen'"
+        bash -c "echo '$SYSTEM_LOCALE UTF-8' >> '${MOUNT_POINT}/etc/locale.gen'; echo 'en_US.UTF-8 UTF-8' >> '${MOUNT_POINT}/etc/locale.gen'"
 
     ui_cmd "Generating locales" \
         arch-chroot "$MOUNT_POINT" locale-gen
 
     ui_cmd "Writing /etc/locale.conf" \
-        bash -c "echo 'LANG=${SYSTEM_LOCALE}' > '${MOUNT_POINT}/etc/locale.conf'"
+        bash -c "echo 'LANG=$SYSTEM_LOCALE' > '${MOUNT_POINT}/etc/locale.conf'"
 
     ui_cmd "Writing /etc/vconsole.conf" \
-        bash -c "echo 'KEYMAP=${SYSTEM_KEYMAP}' > '${MOUNT_POINT}/etc/vconsole.conf'"
+        bash -c "echo 'KEYMAP=$SYSTEM_KEYMAP' > '${MOUNT_POINT}/etc/vconsole.conf'"
 
-    ui_cmd "Writing /etc/hostname" \
-        bash -c "echo '${SYSTEM_HOSTNAME}' > '${MOUNT_POINT}/etc/hostname'"
+    ui_cmd "Setting hostname to $SYSTEM_HOSTNAME" \
+        bash -c "echo '$SYSTEM_HOSTNAME' > '${MOUNT_POINT}/etc/hostname'"
 
-    ui_cmd "Writing /etc/hosts" \
+    ui_cmd "Configuring /etc/hosts" \
         bash -c "cat <<EOF > '${MOUNT_POINT}/etc/hosts'
 127.0.0.1   localhost
 ::1         localhost
@@ -1036,33 +1102,29 @@ EOF"
     ui_cmd "Setting root password" \
         bash -c "echo 'root:${ROOT_PASSWORD}' | arch-chroot '$MOUNT_POINT' chpasswd"
 
-    ui_cmd "Creating primary user $USER_NAME" \
+    ui_cmd "Creating primary user account '$USER_NAME'" \
         arch-chroot "$MOUNT_POINT" useradd -m -g users -G wheel,storage,power,audio,video -s "$user_shell" -c "$USER_REALNAME" "$USER_NAME"
 
-    ui_cmd "Setting password for $USER_NAME" \
+    ui_cmd "Setting password for '$USER_NAME'" \
         bash -c "echo '${USER_NAME}:${USER_PASSWORD}' | arch-chroot '$MOUNT_POINT' chpasswd"
 
-    ui_cmd "Configuring wheel group sudoers" \
+    ui_cmd "Configuring sudoers access for wheel" \
         bash -c "cat <<EOF > '${MOUNT_POINT}/etc/sudoers.d/10-duckling-wheel'
 %wheel ALL=(ALL:ALL) ALL
-Defaults timestamp_timeout=30
 EOF
 chmod 0440 '${MOUNT_POINT}/etc/sudoers.d/10-duckling-wheel'"
 
     if [ ${#EXTRA_USERS[@]} -gt 0 ]; then
         for entry in "${EXTRA_USERS[@]}"; do
             local e_user e_fullname e_sudo e_pass
-            e_user=$(echo "$entry" | cut -d':' -f1)
-            e_fullname=$(echo "$entry" | cut -d':' -f2)
-            e_sudo=$(echo "$entry" | cut -d':' -f3)
-            e_pass=$(echo "$entry" | cut -d':' -f4)
+            IFS=':' read -r e_user e_fullname e_sudo e_pass <<< "$entry"
 
-            local extra_groups="users"
-            if [ "$e_sudo" = "yes" ]; then
-                extra_groups="users,wheel,storage,power,audio,video"
+            local extra_groups="storage,power,audio,video"
+            if [ "$e_sudo" -eq 1 ]; then
+                extra_groups="wheel,storage,power,audio,video"
             fi
 
-            ui_cmd "Creating extra user account: $e_user" \
+            ui_cmd "Creating extra user '$e_user'" \
                 arch-chroot "$MOUNT_POINT" useradd -m -g users -G "$extra_groups" -s "$user_shell" -c "$e_fullname" "$e_user"
 
             ui_cmd "Setting password for $e_user" \
@@ -1071,36 +1133,40 @@ chmod 0440 '${MOUNT_POINT}/etc/sudoers.d/10-duckling-wheel'"
     fi
 
     # Phase 5: ducklingOS Branding & Memory Optimization
-    ui_progress_bar 5 6 "Applying ducklingOS 1 \"Obsidian\" Theme & Branding..." "Tip: Super + W closes the focused window"
+    ui_progress_bar 5 6 "Applying ${DISTRO_NAME} Theme & Branding..." "Tip: Super + W closes the focused window"
 
     ui_cmd "Writing /etc/os-release" \
         bash -c "cat <<EOF > '${MOUNT_POINT}/etc/os-release'
-NAME=\"ducklingOS\"
-PRETTY_NAME=\"ducklingOS 1 \\\"Obsidian\\\" (KDE Plasma Edition)\"
+NAME=\"${DISTRO_NAME}\"
+PRETTY_NAME=\"${DISTRO_NAME} ${DISTRO_VERSION} \\\"${DISTRO_CODENAME}\\\" (KDE Plasma Edition)\"
 ID=ducklingos
 ID_LIKE=arch
-VERSION=\"1\"
-VERSION_ID=\"1\"
-VERSION_CODENAME=\"Obsidian\"
+VERSION=\"${DISTRO_VERSION}\"
+VERSION_ID=\"${DISTRO_VERSION}\"
+VERSION_CODENAME=\"${DISTRO_CODENAME}\"
 BUILD_ID=rolling
 ANSI_COLOR=\"0;33\"
 HOME_URL=\"https://ducklingos.org\"
 DOCUMENTATION_URL=\"https://wiki.ducklingos.org\"
 SUPPORT_URL=\"https://ducklingos.org/support\"
-BUG_REPORT_URL=\"https://github.com/ducklingos/ducklingos/issues\"
+BUG_REPORT_URL=\"https://github.com/the-duckling-group/ducklingOS/issues\"
 LOGO=ducklingos
 EOF"
 
     ui_cmd "Writing /etc/issue" \
         bash -c "cat <<EOF > '${MOUNT_POINT}/etc/issue'
-██████▄  ███  ███  ▄████▄  ███  ███ ███      ████ ███  ███  ▄████▄ 
-███  ███ ███  ███ ███  ███ ███ ▄██▀ ███       ██  ████ ███ ███  ███
-███  ███ ███  ███ ███      ███████  ███       ██  ████████ ███     
-███  ███ ███  ███ ███      █████▄   ███       ██  ███ ████ ███ ████
-███  ███ ███  ███ ███      ███ ▀██▄ ███       ██  ███  ███ ███  ███
-███  ███ ███  ███ ███  ███ ███  ███ ███  ███  ██  ███  ███ ███  ███
-██████▀   ▀████▀   ▀████▀  ███  ███ ████████ ████ ███  ███  ▀█████▀
-ducklingOS 1 \"Obsidian\" (KDE Plasma) - \r (\l)
+     █████                     █████      ████   ███                         ███████     █████████ 
+    ░░███                     ░░███      ░░███  ░░░                        ███░░░░░███  ███░░░░░███
+  ███████  █████ ████  ██████  ░███ █████ ░███  ████  ████████    ███████ ███     ░░███░███    ░░░ 
+ ███░░███ ░░███ ░███  ███░░███ ░███░░███  ░███ ░░███ ░░███░░███  ███░░███░███      ░███░░█████████ 
+░███ ░███  ░███ ░███ ░███ ░░░  ░██████░   ░███  ░███  ░███ ░███ ░███ ░███░███      ░███ ░░░░░░░░███
+░███ ░███  ░███ ░███ ░███  ███ ░███░░███  ░███  ░███  ░███ ░███ ░███ ░███░░███     ███  ███    ░███
+░░████████ ░░████████░░██████  ████ █████ █████ █████ ████ █████░░███████ ░░░███████░  ░░█████████ 
+ ░░░░░░░░   ░░░░░░░░  ░░░░░░  ░░░░ ░░░░░ ░░░░░ ░░░░░ ░░░░ ░░░░░  ░░░░░███   ░░░░░░░     ░░░░░░░░░  
+                                                                 ███ ░███                          
+                                                                ░░██████                           
+                                                                 ░░░░░░                            
+${DISTRO_NAME} ${DISTRO_VERSION} \"${DISTRO_CODENAME}\" (KDE Plasma) - \r (\l)
 EOF"
 
     if [ "$SWAP_TYPE" = "zram" ]; then
@@ -1137,19 +1203,19 @@ EOF"
 
     ui_cmd "Writing Limine configuration (/boot/limine.conf)" \
         bash -c "cat <<EOF > '${MOUNT_POINT}/boot/limine.conf'
-# Limine Bootloader Configuration for ducklingOS 1 \"Obsidian\"
+# Limine Bootloader Configuration for ${DISTRO_NAME}
 timeout: 3
-interface_branding: ducklingOS 1 \"Obsidian\" (KDE Plasma)
+interface_branding: ${DISTRO_NAME} (KDE Plasma)
 interface_branding_color: 3
 term_palette: 160b24;f87171;f5e042;fbbf24;a78bfa;c084fc;38bdf8;e2e8f0;7e6c99;f87171;f5e042;fbbf24;a78bfa;c084fc;38bdf8;ffffff
 
-/ducklingOS 1 \"Obsidian\" (KDE Plasma - ${SYSTEM_KERNEL})
+/${DISTRO_NAME} (KDE Plasma - ${SYSTEM_KERNEL})
     protocol: linux
     kernel_path: boot():/vmlinuz-${SYSTEM_KERNEL}
     module_path: boot():/initramfs-${SYSTEM_KERNEL}.img
     cmdline: ${root_kernel_cmd}
 
-/ducklingOS 1 \"Obsidian\" (Fallback initramfs)
+/${DISTRO_NAME} (Fallback initramfs)
     protocol: linux
     kernel_path: boot():/vmlinuz-${SYSTEM_KERNEL}
     module_path: boot():/initramfs-${SYSTEM_KERNEL}-fallback.img
@@ -1170,142 +1236,64 @@ EOF"
             arch-chroot "$MOUNT_POINT" systemctl enable bluetooth.service
     fi
 
-    if [ "$DEV_MODE" -eq 1 ]; then
-        mkdir -p "${PREVIEW_DIR}"
-        cat <<EOF > "${PREVIEW_DIR}/simulation_manifest.txt"
-ducklingOS 1 "Obsidian" - Dev Simulation Manifest
-Generated At: $(date)
-Hostname: $SYSTEM_HOSTNAME
-Locale: $SYSTEM_LOCALE
-Keymap: $SYSTEM_KEYMAP
-Timezone: $SYSTEM_TIMEZONE
-Primary User: $USER_NAME ($USER_REALNAME)
-Extra Users Count: ${#EXTRA_USERS[@]}
-Disk: $TARGET_DISK
-Filesystem: $TARGET_FILESYSTEM
-Kernel: $SYSTEM_KERNEL
-Desktop: KDE Plasma (Wayland)
-Bootloader: Limine
-Theme: Dark Violet (#160b24) & Bright Yellow (#f5e042)
-EOF
-    fi
+    # Deploy ducklingos CLI wrapper, updater and pacman redirect hook
+    ui_cmd "Installing ducklingos CLI and update suite" \
+        bash -c "mkdir -p '${MOUNT_POINT}/usr/local/bin' && \
+mkdir -p '${MOUNT_POINT}/var/lib/ducklingos' && \
+cp '${LOCAL_UPDATE_SCRIPT}' '${MOUNT_POINT}/usr/local/bin/ducklingos-update' 2>/dev/null || \
+curl -fsSL '${UPDATE_SCRIPT_RAW_URL}' -o '${MOUNT_POINT}/usr/local/bin/ducklingos-update' 2>/dev/null || true && \
+chmod +x '${MOUNT_POINT}/usr/local/bin/ducklingos-update' 2>/dev/null || true && \
+cat <<'STATE_JSON' > '${MOUNT_POINT}/var/lib/ducklingos/installed-versions.json'
+${REMOTE_RELEASE_JSON}
+STATE_JSON
+cat <<'DUCK_CLI' > '${MOUNT_POINT}/usr/local/bin/ducklingos'
+#!/usr/bin/env bash
+set -e
 
-    # Completion View
-    get_term_size
-    ui_clear
-    ui_vertical_pad 14
-    ui_logo
+cmd=\"\${1:-}\"
+shift || true
 
-    if [ "$DEV_MODE" -eq 1 ]; then
-        gum style \
-            --foreground "$OMARCHY_YELLOW" \
-            --bold \
-            --align center \
-            --width "$TERM_COLS" \
-            "🎉 DEV TEST RUN COMPLETED SUCCESSFULLY!"
-        echo ""
-        gum style \
-            --foreground "$OMARCHY_ITEM" \
-            --align center \
-            --width "$TERM_COLS" \
-            "Simulation finished without touching your physical storage or host system." \
-            "Test preview files written to: ${PREVIEW_DIR}"
-    else
-        gum style \
-            --foreground "$OMARCHY_YELLOW" \
-            --bold \
-            --align center \
-            --width "$TERM_COLS" \
-            "🚀 ducklingOS 1 \"Obsidian\" INSTALLED SUCCESSFULLY!"
-        echo ""
-        gum style \
-            --foreground "$OMARCHY_ITEM" \
-            --align center \
-            --width "$TERM_COLS" \
-            "Desktop: KDE Plasma 6 (Wayland)  ·  Bootloader: Limine" \
-            "You may now unmount and reboot into your fresh ducklingOS system." \
-            "Command: umount -R /mnt && reboot"
-    fi
-    echo ""
-}
-
-# ------------------------------------------------------------------------------
-# Entrypoint & CLI Parsing
-# ------------------------------------------------------------------------------
-print_usage() {
-    cat <<EOF
-ducklingOS 1 "Obsidian" - Installer (Dark Violet & Yellow Centered Theme)
-
-Usage:
-  sudo ./install.sh [options]
-
-Options:
-  --dev               Run in simulation / dry-run mode (no changes made to system or disks)
-  --test-preset       Run with predefined automated answers (ideal for tests / CI)
-  -h, --help          Show this help message and exit
-  -v, --version       Display installer version and codename
-
-Examples:
-  ./install.sh --dev              # Interactive TUI in test mode (no root required)
-  ./install.sh --dev --test-preset # Automated test run with dry-run output
-  sudo ./install.sh               # Live production installation on target hardware
-EOF
-}
-
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --dev)
-            export DEV_MODE=1
-            shift
-            ;;
-        --test-preset)
-            export TEST_PRESET=1
-            shift
-            ;;
-        -v|--version)
-            echo "${DISTRO_FULL_NAME} Installer (Dark Violet & Yellow Theme)"
-            exit 0
-            ;;
-        -h|--help)
-            print_usage
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            print_usage
+case \"\$cmd\" in
+    update)
+        exec /usr/local/bin/ducklingos-update \"\$@\"
+        ;;
+    version|-v|--version)
+        echo \"${DISTRO_NAME} ${DISTRO_VERSION} '${DISTRO_CODENAME}' (v${DISTRO_MINI_VERSION:-1.0.0})\"
+        ;;
+    help|-h|--help|\"\")
+        echo \"ducklingOS System Management Utility\"
+        echo \"Usage: ducklingos <command> [arguments]\"
+        echo \"\"
+        echo \"Commands:\"
+        echo \"  update    Check and install official ducklingOS system and app updates\"
+        echo \"  version   Print current ducklingOS release version\"
+        echo \"  help      Show this help message\"
+        ;;
+    *)
+        echo \"Unknown command: \$cmd\"
+        echo \"Run 'ducklingos help' for available commands.\"
+        exit 1
+        ;;
+esac
+DUCK_CLI
+chmod +x '${MOUNT_POINT}/usr/local/bin/ducklingos' && \
+cat <<'PACMAN_WRAPPER' > '${MOUNT_POINT}/usr/local/bin/pacman'
+#!/usr/bin/env bash
+# Intercept system upgrades (pacman -Syu / -Syyu) and redirect to ducklingos update
+for arg in \"\$@\"; do
+    case \"\$arg\" in
+        -Syu|-Suy|-Syyu|-Syyuy)
+            echo -e \"\033[38;2;245;224;66m[!] ducklingOS System Notice:\033[0m\"
+            echo -e \"    Direct 'pacman -Syu' system upgrades are managed by ducklingOS.\"
+            echo -e \"    Please use \033[1;38;2;245;224;66mducklingos update\033[0m to ensure system & app consistency.\"
+            echo -e \"\"
+            echo -e \"    (To install individual packages without system upgrade, use: pacman -S <pkg>)\"
             exit 1
             ;;
     esac
 done
+exec /usr/bin/pacman \"\$@\"
+PACMAN_WRAPPER
+chmod +x '${MOUNT_POINT}/usr/local/bin/pacman'"
 
-check_gum_installed
-
-if [ "$DEV_MODE" -ne 1 ] && [ "$EUID" -ne 0 ]; then
-    ui_error "The live installer must be run as root (or with sudo)."
-    echo -e "Tip: You can test the installer without root using: \033[38;2;245;224;66m./install.sh --dev\033[0m"
-    exit 1
-fi
-
-if [ ! -f /etc/arch-release ]; then
-    if [ "$DEV_MODE" -eq 1 ]; then
-        ui_warn "Non-Arch environment detected. Continuing because --dev mode is active."
-    else
-        ui_error "ducklingOS 1 must be installed from an Arch Linux live environment."
-        exit 1
-    fi
-fi
-
-trap 'echo -e "\n"; ui_warn "Installation interrupted by user."; exit 130' INT
-
-main() {
-    step_welcome
-    step_localization
-    step_network
-    step_users
-    step_storage
-    step_software
-    step_review
-    step_install
-}
-
-main
+    # Execute update.sh with --install
