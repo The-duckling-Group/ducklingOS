@@ -324,12 +324,14 @@ read_local_state() {
     LOCAL_BIG_VERSION="1"
     LOCAL_BIG_NAME="Obsidian"
     LOCAL_MINI_VERSION="1.0.0"
+    LOCAL_JSON='{"os_name":"ducklingOS","big_version":1,"big_version_name":"Obsidian","mini_version":"1.0.0"}'
 
     if [ -f "$LOCAL_STATE_FILE" ]; then
-        LOCAL_OS_NAME=$(python3 -c "import json; d=json.load(open('${LOCAL_STATE_FILE}')); print(d.get('os_name', 'ducklingOS'))" 2>/dev/null || echo "ducklingOS")
-        LOCAL_BIG_VERSION=$(python3 -c "import json; d=json.load(open('${LOCAL_STATE_FILE}')); print(d.get('big_version', '1'))" 2>/dev/null || echo "1")
-        LOCAL_BIG_NAME=$(python3 -c "import json; d=json.load(open('${LOCAL_STATE_FILE}')); print(d.get('big_version_name', 'Obsidian'))" 2>/dev/null || echo "Obsidian")
-        LOCAL_MINI_VERSION=$(python3 -c "import json; d=json.load(open('${LOCAL_STATE_FILE}')); print(d.get('mini_version', '1.0.0'))" 2>/dev/null || echo "1.0.0")
+        LOCAL_JSON=$(cat "$LOCAL_STATE_FILE" 2>/dev/null || echo "$LOCAL_JSON")
+        LOCAL_OS_NAME=$(python3 -c "import json; d=json.loads('''${LOCAL_JSON}'''); print(d.get('os_name', 'ducklingOS'))" 2>/dev/null || echo "ducklingOS")
+        LOCAL_BIG_VERSION=$(python3 -c "import json; d=json.loads('''${LOCAL_JSON}'''); print(d.get('big_version', '1'))" 2>/dev/null || echo "1")
+        LOCAL_BIG_NAME=$(python3 -c "import json; d=json.loads('''${LOCAL_JSON}'''); print(d.get('big_version_name', 'Obsidian'))" 2>/dev/null || echo "Obsidian")
+        LOCAL_MINI_VERSION=$(python3 -c "import json; d=json.loads('''${LOCAL_JSON}'''); print(d.get('mini_version', '1.0.0'))" 2>/dev/null || echo "1.0.0")
     fi
 }
 
@@ -528,7 +530,7 @@ main() {
     local theme_ver
     theme_ver=$(python3 -c "import json; d=json.loads('''${REMOTE_JSON}'''); print(d.get('kde_theme',{}).get('version',''))" 2>/dev/null || echo "")
     local current_theme_ver
-    current_theme_ver=$(python3 -c "import json; d=json.loads('''${LOCAL_JSON}'''); print(d.get('kde_theme',{}).get('version','0.0.0'))" 2>/dev/null || echo "0.0.0")
+    current_theme_ver=$(python3 -c "import json; d=json.loads('''${LOCAL_JSON:-{}}'''); print(d.get('kde_theme',{}).get('version','0.0.0'))" 2>/dev/null || echo "0.0.0")
 
     if [ -n "$theme_url" ] && { [ "$INSTALL_MODE" -eq 1 ] || [ "$FORCE_UPDATE" -eq 1 ] || [ "$theme_ver" != "$current_theme_ver" ]; }; then
         ui_progress_bar 4 5 "Phase 4/5: Deploying ducklingOS KDE Plasma Theme..." "Setting up Obsidian panel, wallpapers, icon themes & start menu"
