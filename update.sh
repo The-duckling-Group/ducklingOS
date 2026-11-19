@@ -522,8 +522,100 @@ main() {
         fi
     fi
 
-    # Phase 4: Finalizing & Writing New Version State
-    ui_progress_bar 4 4 "Phase 4/4: Finalizing Setup State..." "Recording updated version tag"
+    # Phase 4: KDE Plasma Configuration & Theme Rollout
+    local theme_url
+    theme_url=$(python3 -c "import json; d=json.loads('''${REMOTE_JSON}'''); print(d.get('kde_theme',{}).get('url',''))" 2>/dev/null || echo "")
+    local theme_ver
+    theme_ver=$(python3 -c "import json; d=json.loads('''${REMOTE_JSON}'''); print(d.get('kde_theme',{}).get('version',''))" 2>/dev/null || echo "")
+    local current_theme_ver
+    current_theme_ver=$(python3 -c "import json; d=json.loads('''${LOCAL_JSON}'''); print(d.get('kde_theme',{}).get('version','0.0.0'))" 2>/dev/null || echo "0.0.0")
+
+    if [ -n "$theme_url" ] && { [ "$INSTALL_MODE" -eq 1 ] || [ "$FORCE_UPDATE" -eq 1 ] || [ "$theme_ver" != "$current_theme_ver" ]; }; then
+        ui_progress_bar 4 5 "Phase 4/5: Deploying ducklingOS KDE Plasma Theme..." "Setting up Obsidian panel, wallpapers, icon themes & start menu"
+        local theme_archive="/tmp/ducklingos-kde-theme.tar.gz"
+        run_step "Downloading KDE Theme (v${theme_ver})" \
+            curl -fsSL "$theme_url" -o "$theme_archive"
+
+        local deploy_script
+        deploy_script='
+            set -e
+            target_root="'"${TARGET_ROOT}"'"
+            archive="'"${theme_archive}"'"
+            tmp_dir="/tmp/ducklingos-theme-unpack"
+            rm -rf "$tmp_dir" && mkdir -p "$tmp_dir"
+            tar -xzf "$archive" -C "$tmp_dir"
+            theme_base="$tmp_dir/ducklingos-1-obsidian"
+
+            # 1. Install System-wide Start Menu Icon
+            mkdir -p "${target_root}/usr/share/pixmaps"
+            if [ -f "$theme_base/assets/duckling.png" ]; then
+                cp "$theme_base/assets/duckling.png" "${target_root}/usr/share/pixmaps/duckling.png"
+                chmod 644 "${target_root}/usr/share/pixmaps/duckling.png"
+            fi
+
+            # 2. Deploy Wallpapers globally
+            mkdir -p "${target_root}/usr/share/wallpapers/ducklingOS"
+            if [ -d "$theme_base/General/wallpapers" ]; then
+                cp -r "$theme_base/General/wallpapers/"* "${target_root}/usr/share/wallpapers/ducklingOS/" 2>/dev/null || true
+            fi
+
+            # 3. Deploy Global Plasma Look-and-Feel & Desktop themes
+            mkdir -p "${target_root}/usr/share/plasma/look-and-feel"
+            if [ -d "$theme_base/General/plasma/look-and-feel" ]; then
+                cp -r "$theme_base/General/plasma/look-and-feel/"* "${target_root}/usr/share/plasma/look-and-feel/" 2>/dev/null || true
+            fi
+            mkdir -p "${target_root}/usr/share/plasma/desktoptheme"
+            if [ -d "$theme_base/General/plasma/desktoptheme" ]; then
+                cp -r "$theme_base/General/plasma/desktoptheme/"* "${target_root}/usr/share/plasma/desktoptheme/" 2>/dev/null || true
+            fi
+            mkdir -p "${target_root}/usr/share/plasma/plasmoids"
+            if [ -d "$theme_base/General/plasma/plasmoids" ]; then
+                cp -r "$theme_base/General/plasma/plasmoids/"* "${target_root}/usr/share/plasma/plasmoids/" 2>/dev/null || true
+            fi
+
+            # 4. Deploy Color Schemes globally
+            mkdir -p "${target_root}/usr/share/color-schemes"
+            if [ -d "$theme_base/DE/xdg-data/color-schemes" ]; then
+                cp -r "$theme_base/DE/xdg-data/color-schemes/"* "${target_root}/usr/share/color-schemes/" 2>/dev/null || true
+            fi
+
+            # 5. Extract Icon Themes globally if present
+            mkdir -p "${target_root}/usr/share/icons"
+            if [ -f "$theme_base/General/icon-themes.tgz" ]; then
+                tar -xzf "$theme_base/General/icon-themes.tgz" -C "${target_root}/usr/share/icons/" 2>/dev/null || true
+            fi
+
+            # 6. Deploy to /etc/skel for any future created users
+            mkdir -p "${target_root}/etc/skel/.config"
+            mkdir -p "${target_root}/etc/skel/.local/share"
+            if [ -d "$theme_base/DE/xdg-config" ]; then
+                cp -r "$theme_base/DE/xdg-config/"* "${target_root}/etc/skel/.config/" 2>/dev/null || true
+            fi
+            if [ -d "$theme_base/DE/xdg-data" ]; then
+                cp -r "$theme_base/DE/xdg-data/"* "${target_root}/etc/skel/.local/share/" 2>/dev/null || true
+            fi
+
+            # 7. Apply to all real user home directories (UID >= 1000)
+            local passwd_file="${target_root}/etc/passwd"
+            if [ -f "$passwd_file" ]; then
+                while IFS=: read -r u_name _ u_uid _ _ u_home _; do
+                    if [ "$u_uid" -ge 1000 ] && [ "$u_uid" -lt 60000 ] && [ -d "${target_root}${u_home}" ]; then
+                        local user_dest="${target_root}${u_home}"
+                        mkdir -p "$user_dest/.config" "$user_dest/.local/share"
+                        cp -r "$theme_base/DE/xdg-config/"* "$user_dest/.config/" 2>/dev/null || true
+                        cp -r "$theme_base/DE/xdg-data/"* "$user_dest/.local/share/" 2>/dev/null || true
+                        chown -R "${u_uid}:${u_uid}" "$user_dest/.config" "$user_dest/.local" 2>/dev/null || true
+                    fi
+                done < "$passwd_file"
+            fi
+            rm -rf "$tmp_dir" "$archive"
+        '
+        run_step "Applying KDE theme & configuration files" \
+            bash -c "$deploy_script"
+    fi
+
+    # Phase 5: Finalizing & Writing New Version State
+    ui_progress_bar 5 5 "Phase 5/5: Finalizing Setup State..." "Recording updated version tag"
     if [ "$DEV_MODE" -eq 0 ]; then
         mkdir -p "$LOCAL_STATE_DIR"
     fi

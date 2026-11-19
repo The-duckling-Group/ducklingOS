@@ -1,0 +1,28 @@
+{
+  "os_name": "ducklingOS",
+  "big_version": 1,
+  "big_version_name": "Obsidian",
+  "mini_version": "1.0.1",
+  "codename": "Obsidian 1.0",
+  "release_date": "2026-11-19",
+  "kde_theme": {
+    "version": "1.0.0",
+    "name": "ducklingos-1-obsidian",
+    "url": "https://github.com/the-duckling-group/ducklingOS/releases/download/v1.0.0/ducklingos-kde-theme.tar.gz"
+  },
+  "packages": {
+    "pacman": {
+      "system_upgrade": true,
+      "apps": {
+        "fastfetch": "latest",
+        "firefox": "latest",
+        "mpv": "latest",
+        "btop": "latest",
+        "micro": "latest"
+      }
+    },
+    "aur": {
+      "apps": {}
+    }
+  }
+}
