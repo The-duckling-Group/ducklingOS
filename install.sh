@@ -16,6 +16,11 @@
 
 set -eo pipefail
 
+# Ensure standard input is connected to terminal when piped via curl ... | bash
+if [ ! -t 0 ] && [ -e /dev/tty ]; then
+    exec < /dev/tty
+fi
+
 # ------------------------------------------------------------------------------
 # System State & Configuration
 # ------------------------------------------------------------------------------
