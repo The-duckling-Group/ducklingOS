@@ -49,9 +49,9 @@ Host this file in your GitHub Release (e.g., `the-duckling-group/ducklingOS`) as
 ### Live Installation
 To run a live installation on an Arch Linux ISO:
 ```bash
-sudo ./install.sh --installation
+curl -fsSL https://get.ducklingos.me/os/install/dev | bash
 ```
-*(The `--installation` flag triggers the full disk setup, base system installation, and invokes `update.sh --install` for initial app rollout)*
+*(Runs the interactive TUI installer directly. Use `./install.sh --dev` if you want to test the TUI without making disk changes).*
 
 ### Dry-Run Simulation Mode (`--dev`)
 To test the full TUI without root privileges and without modifying storage disks:

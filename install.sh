@@ -26,7 +26,7 @@ export DISTRO_FULL_NAME="${DISTRO_NAME}"
 
 export DEV_MODE=0
 export TEST_PRESET=0
-export INSTALLATION_MODE=0
+export INSTALLATION_MODE=1
 export DUCKLINGOS_REPO="the-duckling-group/ducklingOS"
 export DUCKLINGOS_BRANCH="dev"
 export MANIFEST_RAW_URL="https://raw.githubusercontent.com/${DUCKLINGOS_REPO}/${DUCKLINGOS_BRANCH}/system-update.json"
@@ -1487,14 +1487,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 check_gum_installed
-
-if [ "$DEV_MODE" -ne 1 ] && [ "$INSTALLATION_MODE" -ne 1 ]; then
-    echo -e "\033[38;2;245;224;66m[!] ducklingOS Installer Safety Notice:\033[0m"
-    echo -e "    To perform a live installation, run with: \033[1;38;2;245;224;66msudo ./install.sh --installation\033[0m"
-    echo -e "    To test without making changes, run:      \033[1;38;2;245;224;66m./install.sh --dev\033[0m"
-    echo ""
-    exit 1
-fi
 
 if [ "$DEV_MODE" -ne 1 ] && [ "$EUID" -ne 0 ]; then
     ui_error "The live installer must be run as root (or with sudo)."
