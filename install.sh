@@ -853,19 +853,31 @@ step_software() {
 
     echo ""
 
-    if ui_confirm "Install Gaming Suite (Steam, Proton, Heroic Launcher, Lutris, GameMode, MangoHud)?"; then
+    local gaming_choice
+    gaming_choice=$(ui_choose "Install Gaming Suite (Steam, Proton, Heroic, Lutris, GameMode)?" \
+        "No  (Minimal / Standard Desktop)" \
+        "Yes (Install Gaming Packages)")
+    if [[ "$gaming_choice" =~ ^Yes ]]; then
         INSTALL_GAMING=1
     else
         INSTALL_GAMING=0
     fi
 
-    if ui_confirm "Install Developer Toolkit (Neovim, Zsh, Starship, Git, Tmux, Base-Devel)?"; then
+    local dev_choice
+    dev_choice=$(ui_choose "Install Developer Toolkit (Neovim, Zsh, Starship, Git, Tmux)?" \
+        "No  (Skip Developer Tools)" \
+        "Yes (Install Developer Tools)")
+    if [[ "$dev_choice" =~ ^Yes ]]; then
         INSTALL_DEV_TOOLS=1
     else
         INSTALL_DEV_TOOLS=0
     fi
 
-    if ui_confirm "Enable Bluetooth Stack (bluez, bluedevil)?"; then
+    local bt_choice
+    bt_choice=$(ui_choose "Enable Bluetooth Stack (bluez, bluedevil)?" \
+        "Yes (Recommended - Enable Bluetooth)" \
+        "No  (Disable Bluetooth Stack)")
+    if [[ "$bt_choice" =~ ^Yes ]]; then
         INSTALL_BLUETOOTH=1
     else
         INSTALL_BLUETOOTH=0
@@ -1079,6 +1091,14 @@ step_install() {
     fi
 
     if [ "$INSTALL_GAMING" -eq 1 ]; then
+        # Enable multilib repository in live environment pacman.conf so pacstrap can resolve steam & lib32 packages
+        if [ "$DEV_MODE" -eq 0 ] && [ -f /etc/pacman.conf ]; then
+            if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
+                sed -i '/^#\[multilib\]/{s/^#//;n;s/^#//}' /etc/pacman.conf
+                pacman -Sy --noconfirm 2>/dev/null || true
+            fi
+        fi
+
         base_pkgs+=(
             "steam"
             "lutris"
